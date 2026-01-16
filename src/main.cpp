@@ -164,6 +164,8 @@ static keyer_mode_t mode = MODE_KEYER;
 // EDIT用パドル状態
 static uint16_t edit_dot_cnt  = 0;
 static uint16_t edit_dash_cnt = 0;
+static bool edit_dot_prev  = false;   // 前フレームのDOT状態
+static bool edit_dash_prev = false;  // 前フレームのDASH状態
 static uint8_t edit_first = 1;   // ★ 追加：EDIT初回フラグ
 
 const char *mode_to_str(keyer_mode_t m)
@@ -981,17 +983,6 @@ void play_sys_msg(const char *msg, uint8_t wpm_val)
     wpm_sys = wpm_val;
     key_spd_sys = 4687 / wpm_sys;
 
-    // LCD のメッセージ表示領域だけをクリア
-    lcdindex = 0;
-    memset(line1, ' ', sizeof(line1));
-    memset(line2, ' ', sizeof(line2));
-    // メッセージ表示領域（LINE_HEIGHT*2 以下）に黒いボックスを描画
-    for (int y = LINE_HEIGHT * 2; y < 64; y++) {
-        ssd1306_drawFastHLine(0, y, 128, 0);
-    }
-    ssd1306_refresh();
-    draw_sys_message(msg);  // システムメッセージを表示
-
     keyout_enabled = false;   // RFキーイングしない
     req_reset_auto = true;
     auto_mode = true;
@@ -1136,6 +1127,8 @@ void handle_edit_select(void)
         edit_len = strnlen(msgs[cur_msg], MSG_LEN);
         printf("EDIT MSG1\r\n");
         edit_first    = 1;   // ★ 重要
+        edit_dot_prev = false;
+        edit_dash_prev = false;
         mode = MODE_EDIT;
         draw_edit_screen();
         //play_sys_msg("E", 20);
@@ -1150,6 +1143,8 @@ void handle_edit_select(void)
         edit_len = strnlen(msgs[cur_msg], MSG_LEN);
         printf("EDIT MSG2\r\n");
         edit_first    = 1;   // ★ 重要
+        edit_dot_prev = false;
+        edit_dash_prev = false;
         mode = MODE_EDIT;
         draw_edit_screen();
         //play_sys_msg("I", 20);
@@ -1177,6 +1172,8 @@ void handle_edit_mode(void)
     if (edit_first) {
         draw_edit_screen();
         edit_first = 0;
+        edit_dot_prev = false;
+        edit_dash_prev = false;
     }
 
     // スイッチ状態取得
@@ -1191,32 +1188,54 @@ void handle_edit_mode(void)
 
         /* ---- DOT（戻る）---- */
         if (dot) {
-            edit_dot_cnt++;
-            if (edit_dot_cnt == EDIT_REPEAT_START ||
-                (edit_dot_cnt > EDIT_REPEAT_START &&
-                 (edit_dot_cnt - EDIT_REPEAT_START) % EDIT_REPEAT_SPEED == 0)) {
-
+            // 新規押下（前フレームが靟で今フレームが押されている）→ 即座に反映
+            if (!edit_dot_prev) {
                 msgs[cur_msg][edit_pos] =
                     prev_char(msgs[cur_msg][edit_pos] ? msgs[cur_msg][edit_pos] : ' ');
                 draw_edit_screen();
+                edit_dot_cnt = 0;
+            } else {
+                // 押し続け → リピート壣了
+                edit_dot_cnt++;
+                if (edit_dot_cnt == EDIT_REPEAT_START ||
+                    (edit_dot_cnt > EDIT_REPEAT_START &&
+                     (edit_dot_cnt - EDIT_REPEAT_START) % EDIT_REPEAT_SPEED == 0)) {
+
+                    msgs[cur_msg][edit_pos] =
+                        prev_char(msgs[cur_msg][edit_pos] ? msgs[cur_msg][edit_pos] : ' ');
+                    draw_edit_screen();
+                }
             }
+            edit_dot_prev = true;
         } else {
             edit_dot_cnt = 0;
+            edit_dot_prev = false;
         }
 
         /* ---- DASH（進む）---- */
         if (dash) {
-            edit_dash_cnt++;
-            if (edit_dash_cnt == EDIT_REPEAT_START ||
-                (edit_dash_cnt > EDIT_REPEAT_START &&
-                 (edit_dash_cnt - EDIT_REPEAT_START) % EDIT_REPEAT_SPEED == 0)) {
-
+            // 新規押下（前フレームが靟で今フレームが押されている）→ 即座に反映
+            if (!edit_dash_prev) {
                 msgs[cur_msg][edit_pos] =
                     next_char(msgs[cur_msg][edit_pos] ? msgs[cur_msg][edit_pos] : ' ');
                 draw_edit_screen();
+                edit_dash_cnt = 0;
+            } else {
+                // 押し続け → リピート壣了
+                edit_dash_cnt++;
+                if (edit_dash_cnt == EDIT_REPEAT_START ||
+                    (edit_dash_cnt > EDIT_REPEAT_START &&
+                     (edit_dash_cnt - EDIT_REPEAT_START) % EDIT_REPEAT_SPEED == 0)) {
+
+                    msgs[cur_msg][edit_pos] =
+                        next_char(msgs[cur_msg][edit_pos] ? msgs[cur_msg][edit_pos] : ' ');
+                    draw_edit_screen();
+                }
             }
+            edit_dash_prev = true;
         } else {
             edit_dash_cnt = 0;
+            edit_dash_prev = false;
         }
     }
 
