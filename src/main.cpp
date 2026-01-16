@@ -210,6 +210,7 @@ const char *auto_msg = NULL;   // 実際に再生する文字列
 bool sys_msg_active = false;   // システムメッセージか？
 //static uint8_t sys_msg_wpm = 20;
 volatile bool keyout_enabled = true;   // 通常はON
+volatile bool ignore_paddle_input = false;  // パドル入力を無視するフラグ
 
 
 //==========================================
@@ -474,6 +475,15 @@ void save_current_message_to_flash(void)
 uint8_t job_paddle() {
   static uint32_t left_time = 0;
   uint8_t key_dot, key_dash;
+
+  // パドル入力を無視する場合、状態をリセットして終了
+  if (ignore_paddle_input) {
+    paddle = PDL_FREE;
+    paddle_old = PDL_FREE;
+    squeeze = SQZ_FREE;
+    left_time = 0;
+    return 0;
+  }
 
   key_dot  = (!GPIO_digitalRead(PIN_DOT));
   key_dash = (!GPIO_digitalRead(PIN_DASH));
@@ -1034,6 +1044,13 @@ void handle_keyer_mode(void)
     //     return; // システムメッセージ中は何もしない
     // }
 
+    /* パドル入力無視フラグをクリア（パドルが両方離されたら） */
+    bool dot  = !GPIO_digitalRead(PIN_DOT);
+    bool dash = !GPIO_digitalRead(PIN_DASH);
+    if (ignore_paddle_input && !dot && !dash) {
+        ignore_paddle_input = false;
+    }
+
     //スイッチ状態取得
     update_switch_status();
     
@@ -1077,14 +1094,22 @@ void handle_play_mode(void)
     //     return; // システムメッセージ中は何もしない
     // }
 
-        /* 何か操作したら止める */
-    if (sw_is_pressed() || in_dot || in_dash) {
+    /* パドル入力を直接読み込み */
+    bool dot  = !GPIO_digitalRead(PIN_DOT);
+    bool dash = !GPIO_digitalRead(PIN_DASH);
+
+    /* パドル無視フラグがONで、パドルが両方離されたらフラグをクリア */
+    if (ignore_paddle_input && !dot && !dash) {
+        ignore_paddle_input = false;
+    }
+
+    /* 何か操作したら止める */
+    if (sw_is_pressed() || dot || dash) {
         SW_CLEAR();
         stop_play();
         printf("Interrupt Message\r\n");
-        // sw_rel.sw1=false;
-        // sw_rel.sw2=false;
         mode = MODE_KEYER;
+        draw_keyer_screen();  // 画面復帰
         return;
     }
 
@@ -1446,6 +1471,12 @@ void stop_play(void)
 {
     auto_mode = false;      // 自動送信OFF
     req_reset_auto = true;  // job_auto 内部状態を初期化
+    
+    // パドル入力を無視（停止操作が音声にならないようにするため）
+    ignore_paddle_input = true;
+    
+    // スイッチマスクをセット（停止操作の入力を無視）
+    sw_mask = 1;
 }
 
 void save_msgs(void)
