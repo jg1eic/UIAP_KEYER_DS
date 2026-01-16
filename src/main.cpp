@@ -971,11 +971,21 @@ void play_sys_msg(const char *msg, uint8_t wpm_val)
     wpm_sys = wpm_val;
     key_spd_sys = 4687 / wpm_sys;
 
+    // LCD のメッセージ表示領域だけをクリア
+    lcdindex = 0;
+    memset(line1, ' ', sizeof(line1));
+    memset(line2, ' ', sizeof(line2));
+    // メッセージ表示領域（LINE_HEIGHT*2 以下）に黒いボックスを描画
+    for (int y = LINE_HEIGHT * 2; y < 64; y++) {
+        ssd1306_drawFastHLine(0, y, 128, 0);
+    }
+    ssd1306_refresh();
+    draw_sys_message(msg);  // システムメッセージを表示
+
     keyout_enabled = false;   // RFキーイングしない
     req_reset_auto = true;
     auto_mode = true;
     mode = MODE_PLAY;
-    //draw_sys_message(msg);
 }
 
 void play_mem_msg(uint8_t n)
@@ -1415,6 +1425,16 @@ void start_play(uint8_t msg)
     auto_msg = msgs[msg];   // ★ 追加：再生する文字列を指定
     sys_msg_active = false;
     keyout_enabled = true;
+
+    // LCD のメッセージ表示領域だけをクリア
+    lcdindex = 0;
+    memset(line1, ' ', sizeof(line1));
+    memset(line2, ' ', sizeof(line2));
+    // メッセージ表示領域（LINE_HEIGHT*2 以下）に黒いボックスを描画
+    for (int y = LINE_HEIGHT * 2; y < 64; y++) {
+        ssd1306_drawFastHLine(0, y, 128, 0);
+    }
+    ssd1306_refresh();
 
     auto_mode = true;
     req_reset_auto = true;
