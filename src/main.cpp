@@ -143,7 +143,9 @@ volatile bool edit_tick = false;
 
 // キーイング用変数
 int  key_spd = 1000;
+int  key_spd_sys = 1000;  // システムメッセージ用の速度（固定値）
 int  wpm = 20;
+int  wpm_sys = 20;        // システムメッセージ用のWPM（固定値）
 bool tone_enabled = false;
 int squeeze = 0;
 int paddle = PDL_FREE;
@@ -536,6 +538,9 @@ uint8_t job_auto()
     static int pending_gap_half = 0;
     static bool pending_stop = false;
 
+    // システムメッセージ中は固定速度（key_spd_sys）を使用、通常時はADC値から更新された speed を使用
+    int current_key_spd = sys_msg_active ? key_spd_sys : key_spd;
+
     if (req_reset_auto) {
         req_reset_auto = false;
         left_time = 0;
@@ -552,7 +557,7 @@ uint8_t job_auto()
     if (left_time != 0) {
         left_time--;
     } else {
-        left_time = key_spd / 2;
+        left_time = current_key_spd / 2;
         if (auto_squeeze != 0) auto_squeeze--;
         else if (gap_half > 0) gap_half--;
     }
@@ -610,6 +615,7 @@ uint8_t job_auto()
         mode = MODE_KEYER;
 
         draw_keyer_screen();   // ★追加（画面復帰）
+        
         return 0;
     }
 
@@ -752,8 +758,6 @@ void update_speed_from_adc() {
     sprintf(buf, "%2d", wpm);
     ssd1306_drawstr_sz(96, 0, buf, 1, fontsize_8x8);
     ssd1306_refresh();
-
-	Delay_Ms(10);
 }
 
 //==========================================
@@ -963,8 +967,9 @@ void play_sys_msg(const char *msg, uint8_t wpm_val)
     auto_msg = msg;
     sys_msg_active = true;
 
-    wpm = wpm_val;
-    key_spd = 4687 / wpm;
+    // システムメッセージ用の固定WPMを設定
+    wpm_sys = wpm_val;
+    key_spd_sys = 4687 / wpm_sys;
 
     keyout_enabled = false;   // RFキーイングしない
     req_reset_auto = true;
@@ -1376,8 +1381,8 @@ void loop(void)
         last_tick += 40; // advance by 40 ticks
         edit_tick_10ms = true;
 
-        /* ==== EDIT中はWPM更新しない ==== */
-        if (mode == MODE_KEYER || mode == MODE_PLAY) {
+        /* ==== EDIT中以外はWPM更新 ==== */
+        if (mode != MODE_EDIT) {
             update_speed_from_adc();
         }
 
