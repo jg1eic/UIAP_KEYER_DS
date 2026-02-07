@@ -148,7 +148,7 @@ static uint8_t cur_msg = 0;  // 編集中メモリ番号
 static uint8_t edit_pos = 0; // カーソル位置
 
 static const char edit_table[] =
-    " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?.";
+    " ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 /?.=+-@"; // 編集用文字テーブル
 
 #define DISP_COLS 16 // 画面に表示する文字数
 
@@ -287,7 +287,6 @@ void handle_edit_mode(void);
 void draw_keyer_screen(void);
 void draw_edit_screen(void);
 void draw_edit_select(void);
-void draw_keyer_screen(void);
 void draw_startup_screen(void);
 void loop(void);
 void TIM1_UP_IRQHandler(void);
@@ -301,10 +300,10 @@ void draw_sys_message(const char *msg);
 static const char *morseForChar(char c)
 {
     // 小文字 b は “BT”(-...-) 扱い（区切り用途）
-    if (c == 'b')
-        return "-...-";
-    if (c == 'a')
-        return ".-.-.";
+    // if (c == '=')
+    //     return "-...-";
+    // if (c == '+')
+    //     return ".-.-.";
     if (c == 'k')
         return "-.--.";
     if (c == 'v')
@@ -431,6 +430,9 @@ const MorseMap morse_table[] = {
     {"-----",'0'}, {".----",'1'}, {"..---",'2'}, {"...--",'3'},
     {"....-",'4'}, {".....",'5'}, {"-....",'6'}, {"--...",'7'},
     {"---..",'8'}, {"----.",'9'},
+
+    {".-.-.-",'.'}, {"--..--",','}, {"..--..",'?'}, {"-..-.",'/'},
+    {"-...-", '='}, {".-.-.",'+'},
 };
 
 
@@ -770,6 +772,13 @@ uint8_t job_auto()
         sys_msg_active = false;
         keyout_enabled = true;
         mode = MODE_KEYER;
+        
+        // ★ 追加：メッセージ再生完了時に各種バッファ・フラグをリセット
+        morse_len = 0;
+        cw_r = cw_w;  // CWイベントバッファをクリア
+        key_off_ticks = 0;  // OFF時間カウントをリセット
+        key_on_ticks = 0;   // ON時間カウントをリセット
+        flush_done = true;  // 無音タイムアウト処理をスキップ
 
         draw_keyer_screen(); // ★追加（画面復帰）
 
@@ -1217,6 +1226,9 @@ void update_dit(uint32_t ticks)
 //==========================================
 static inline void cw_push(cw_event_t ev)
 {
+    // 再生中（自動送信）やPLAYモード中はデコード用バッファに入れない
+    if (auto_mode || mode == MODE_PLAY) return;
+
     uint8_t next = (cw_w + 1) % CW_BUF_SIZE;
     if (next != cw_r) {
         cw_buf[cw_w] = ev;
@@ -1234,7 +1246,7 @@ char morse_to_char(const char *m)
             return morse_table[i].ch;
         }
     }
-    return '?';   // 見つからない場合
+    return '*';   // 見つからない場合
 }
 
 
@@ -1292,7 +1304,13 @@ void process_off(uint32_t ticks)
 //==========================================
 void cw_decode_task(void)
 {
-    while (cw_r != cw_w)
+    /*
+     * Make a local snapshot of the producer index to avoid races with
+     * the IRQ that pushes events (single producer in ISR, single consumer
+     * here). This avoids reading cw_w multiple times while it changes.
+     */
+    uint8_t w = cw_w;
+    while (cw_r != w)
     {
         cw_event_t ev = cw_buf[cw_r];
         cw_r = (cw_r + 1) % CW_BUF_SIZE;
@@ -1315,8 +1333,10 @@ void cw_decode_task(void)
             if (morse_len > 0) {
                 morse_buf[morse_len] = '\0';   // 文字列化
                 char c = morse_to_char(morse_buf);
-                printAscii(c); // LCD表示
-                printf("Decoded='%c', Buf=%s, Len=%d\r\n", c, morse_buf, morse_len);
+                if (mode != MODE_PLAY && !auto_mode) {
+                    printAscii(c); // LCD表示
+                }
+                if (mode != MODE_PLAY) DEBUG_PRINTF("Decoded='%c', Buf=%s, Len=%d\r\n", c, morse_buf, morse_len);
                 morse_len = 0;
             }
             break;
@@ -1325,14 +1345,20 @@ void cw_decode_task(void)
             if (morse_len > 0) {
                 morse_buf[morse_len] = '\0';
                 char c = morse_to_char(morse_buf);
-                printAscii(c); // LCD表示
-                printf("Decoded='%c', Buf=%s, Len=%d\r\n", c, morse_buf, morse_len);
+                if (mode != MODE_PLAY && !auto_mode) {
+                    printAscii(c); // LCD表示
+                }
+                if (mode != MODE_PLAY) DEBUG_PRINTF("Decoded='%c', Buf=%s, Len=%d\r\n", c, morse_buf, morse_len);
                 morse_len = 0;
             }
-            printAscii(32); // スペース表示
+            if (mode != MODE_PLAY && !auto_mode) {
+                printAscii(32); // スペース表示
+            }
             break;
 
         }
+        /* refresh local snapshot in case producer advanced while processing */
+        w = cw_w;
     }
 }
 
@@ -1462,6 +1488,10 @@ void handle_play_mode(void)
     {
         printf("Finished Message\r\n");
         mode = MODE_KEYER;
+        // ★ 追加：メモリ再生終了時にタイムアウト関連をリセット
+        flush_done = true;
+        key_off_ticks = 0;
+        key_on_ticks = 0;
     }
 }
 
@@ -1673,7 +1703,7 @@ void handle_setup_mode(void)
 void draw_startup_screen(void)
 {
     printf("UIAP KEYER start\r\n");
-    ssd1306_drawstr_sz(0, 30, "UIAP KEYER V0.01", 1, fontsize_8x8);
+    ssd1306_drawstr_sz(0, 30, "UIAP KEYER V0.02", 1, fontsize_8x8);
     ssd1306_refresh();
 }
 
@@ -1815,7 +1845,7 @@ void loop(void)
         edit_tick_10ms = true;
 
         /* ==== EDIT中以外はWPM更新 ==== */
-        if (mode != MODE_EDIT )
+        if (mode != MODE_EDIT && mode != MODE_PLAY)
         {
             update_speed_from_adc();
         }
@@ -1853,7 +1883,8 @@ void loop(void)
     cw_decode_task();
 
     // ==== 無音タイムアウト（最後の文字確定用） ====
-    if (!key_state && !flush_done) {
+    // ★ メモリ再生中は自動デコード確定を無効化
+    if (!key_state && !flush_done && !auto_mode) {
 
         if (key_off_ticks >= WORD_GAP_MIN) {
             cw_push(EV_WORD_GAP);
@@ -1891,6 +1922,13 @@ void start_play(uint8_t msg)
     }
     ssd1306_refresh();
 
+    // 再生開始時に未確定データやタイマをクリアして、前回の残りで誤デコードされないようにする
+    morse_len = 0;    // 未確定のモールス符号を破棄
+    cw_r = cw_w;      // CWイベントバッファをクリア
+    key_off_ticks = 0;
+    key_on_ticks = 0;
+    flush_done = true; // 無音タイムアウト処理を一時的に抑止
+
     auto_mode = true;
     req_reset_auto = true;
     mode = MODE_PLAY;
@@ -1906,6 +1944,9 @@ void stop_play(void)
 
     // スイッチマスクをセット（停止操作の入力を無視）
     sw_mask = 1;
+
+    // ===== 追加 =====
+    morse_len = 0;         // ← 未確定文字を破棄
 }
 
 //==========================================

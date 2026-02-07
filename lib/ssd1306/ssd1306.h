@@ -156,7 +156,7 @@ const uint8_t ssd1306_init_array[] =
 #endif
 	SSD1306_TERMINATE_CMDS                 // 0xFF --fake command to mark end
 };
-
+	const uint8_t *cmd_list = ssd1306_init_array;
 // the display buffer
 uint8_t ssd1306_buffer[SSD1306_W*SSD1306_H/8];
 
@@ -609,11 +609,11 @@ void ssd1306_drawchar(uint8_t x, uint8_t y, uint8_t chr, uint8_t color)
 /*
  * draw a string to the display
  */
-void ssd1306_drawstr(uint8_t x, uint8_t y, char *str, uint8_t color)
+void ssd1306_drawstr(uint8_t x, uint8_t y, const char *str, uint8_t color)
 {
 	uint8_t c;
 	
-	while((c=*str++))
+	while((c=(uint8_t)*str++))
 	{
 		ssd1306_drawchar(x, y, c, color);
 		x += 8;
@@ -674,11 +674,11 @@ void ssd1306_drawchar_sz(uint8_t x, uint8_t y, uint8_t chr, uint8_t color, font_
 /*
  * draw a string to the display buffer, scaled to size
  */
-void ssd1306_drawstr_sz(uint8_t x, uint8_t y, char *str, uint8_t color, font_size_t font_size)
+void ssd1306_drawstr_sz(uint8_t x, uint8_t y, const char *str, uint8_t color, font_size_t font_size)
 {
 	uint8_t c;
 	
-	while((c=*str++))
+	while((c=(uint8_t)*str++))
 	{
 		ssd1306_drawchar_sz(x, y, c, color, font_size);
 		x += 8 * font_size;
