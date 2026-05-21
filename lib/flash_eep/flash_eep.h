@@ -41,8 +41,10 @@
 #endif
 
 #define FLASH_PAGE_SIZE    64u
-#define FLASH_BASE_ADDR    0x08003C00u
-#define FLASH_SIZE         1024u
+#define FLASH_BASE_ADDR    0x08003E00u
+#define FLASH_SIZE         512u
+// #define FLASH_BASE_ADDR    0x08003C00u
+// #define FLASH_SIZE         1024u
 #define FLASH_END_ADDR     0x08003FFFu   // CH32V003 16KB
 
 class FLASH_EEP {

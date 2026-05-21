@@ -1,4 +1,4 @@
-# UIAP_KEYER_XS for CH32V003
+# KEYER DS -Powered by UIAPduino-
 
 UIAPduino(CH32V003) マイコンを使用した、  
 **アマチュア無線向け CW（モールス）キーヤー**です。
@@ -80,8 +80,10 @@ OLED には現在のモードと WPM が表示されます。
    → EDIT_SELECT モードへ
 
 2. 編集するメモリーを選択  
-   - SW1 : MSG1  
-   - SW2 : MSG2  
+   - F1 : MSG1  
+   - F2 : MSG2
+   - F3 : MSG3
+   - F4 : MSG4
 
 3. EDIT モード操作  
 
