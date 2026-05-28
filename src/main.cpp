@@ -219,6 +219,10 @@ typedef enum
 
 volatile StopReason stop_reason = STOP_NONE;
 
+// リピート再生
+static bool repeat_mode = false;    // リピート再生中フラグ
+static uint8_t repeat_msg_idx = 0;  // リピート対象メッセージ番号
+
 // スイッチの判定
 uint8_t sw_mask = 0; // スイッチ押しっぱなしをカウントしないためのマスク
 uint8_t sw_clicked = 0;
@@ -1579,6 +1583,25 @@ void handle_keyer_mode(void)
         mode = MODE_PLAY;
         start_play(3);
     }
+
+    // SWx 長押し → リピート再生開始
+    {
+        uint8_t rpt = 0xff;
+        if      (sw_mode == SW_INFO_PRESS && sw_stat == SW_1) rpt = 0;
+        else if (sw_mode == SW_INFO_PRESS && sw_stat == SW_2) rpt = 1;
+        else if (sw_mode == SW_INFO_PRESS && sw_stat == SW_3) rpt = 2;
+        else if (sw_mode == SW_INFO_PRESS && sw_stat == SW_4) rpt = 3;
+        if (rpt != 0xff) {
+            SW_CLEAR();
+            repeat_mode = true;
+            repeat_msg_idx = rpt;
+            // タイトルを "RPT" に更新
+            ssd1306_fillRect(0, 0, 56, 8, 0);
+            ssd1306_drawstr_sz(0, 0, "RPT", 1, fontsize_8x8);
+            ssd1306_refresh();
+            play_mem_msg(rpt);
+        }
+    }
 }
 
 //==========================================
@@ -1597,28 +1620,37 @@ void handle_play_mode(void)
         ignore_paddle_input = false;
     }
 
-    // 何か操作したら止める
+    // 何か操作したら止める（リピートも解除）
     if (sw_is_pressed() || dot || dash || st)
     {
         SW_CLEAR();
         stop_play();
+        repeat_mode = false;
         //printf("Interrupt Message\r\n");
         mode = MODE_KEYER;
-        //draw_keyer_screen(); // 画面復帰
+        draw_keyer_screen();
+        ssd1306_refresh();
         return;
     }
 
     if (!auto_mode)
     {
-        //printf("Finished Message\r\n");
-        // ※ここで stop_play() を呼ぶのが重要
         stop_play();
-        mode = MODE_KEYER;
-        last_activity_tick = tim1_tick256;
-        // ※追加：メモリ再生終了時にタイムアウト関連をリセット
-        flush_done = true;
-        key_off_ticks = 0;
-        key_on_ticks = 0;
+        if (repeat_mode)
+        {
+            // リピート：インターバルなしで再度再生
+            play_mem_msg(repeat_msg_idx);
+        }
+        else
+        {
+            //printf("Finished Message\r\n");
+            mode = MODE_KEYER;
+            last_activity_tick = tim1_tick256;
+            // ※追加：メモリ再生終了時にタイムアウト関連をリセット
+            flush_done = true;
+            key_off_ticks = 0;
+            key_on_ticks = 0;
+        }
     }
 }
 
