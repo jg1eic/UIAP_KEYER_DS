@@ -150,14 +150,19 @@ volatile bool edit_tick_10ms = false; // EDIT用10msタイマーフラグ
 
 char msgs[MSG_NUM][MSG_LEN + 1]; // メッセージバッファ
 
-// ポインタ配列にして実文字列分のFlashのみ使用（ゼロパディング不要）
-static const char * const default_msgs[MSG_NUM] = {
-    "CQ TEST JO1YGK",
-    "5NN 13M BK",
-    "TU DE JO1YGK K",
-    "QRZ? DE JO1YGK"
-}; // デフォルトメッセージ
+//const char default_msgs[MSG_NUM][MSG_LEN] = {
+//    "CQ TEST JO1YGK",
+//    "5NN 13M BK",
+//    "TEST MESSAGE 3",
+//    "TEST MESSAGE 4"
+//    }; // デフォルトメッセージ
 
+const char default_msgs[MSG_NUM][MSG_LEN] = {
+    "CQ CQ CQ DE JA1AOQ JA1AOQ JA1AOQ K",
+    "THIS IS A TEST MESSAGE FOR UIAPDUINO CW DECODER",
+    "A QUICK BROWN FOX JUMPES OVER THE LAZY DOG",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?.=+-@"
+    }; // デフォルトメッセージ
 static uint8_t cur_msg = 0;  // 編集メモリ番号
 static uint8_t edit_pos = 0; // カーソル位置
 
@@ -809,20 +814,22 @@ uint8_t job_auto(void)
                     auto_mode = false;
                     req_reset_auto = true;
                     auto_msg = NULL;
-                    sys_msg_active = false;
-                    keyout_enabled = true;
-                    mode = MODE_KEYER;
-
-                    // デコード系のリセット（コード踏襲）
                     morse_len = 0;
-    last_activity_tick = tim1_tick256;
-
-    cw_r = cw_w;
+                    last_activity_tick = tim1_tick256;
+                    cw_r = cw_w;
                     key_off_ticks = 0;
                     key_on_ticks = 0;
                     flush_done = true;
 
-                    //draw_keyer_screen();
+                    if (repeat_mode) {
+                        // リピートモード：mode=MODE_PLAYのまま
+                        // handle_play_mode() がインターバル後に再生する
+                    } else {
+                        // 通常終了
+                        sys_msg_active = false;
+                        keyout_enabled = true;
+                        mode = MODE_KEYER;
+                    }
                     return 0;
                 }
 
@@ -1602,7 +1609,7 @@ void handle_keyer_mode(void)
             ssd1306_fillRect(0, 0, 56, 8, 0);
             ssd1306_drawstr_sz(0, 0, "RPT", 1, fontsize_8x8);
             ssd1306_refresh();
-            play_mem_msg(rpt);
+            start_play(rpt);  // play_mem_msgより完全な初期化
         }
     }
 }
@@ -1641,17 +1648,16 @@ void handle_play_mode(void)
     {
         if ((int32_t)(tim1_tick256 - repeat_wait_until) >= 0)
         {
-            // インターバル終了 → 再生開始
+            // インターバル終了 → 再生開始（start_playで完全初期化）
             repeat_waiting = false;
-            play_mem_msg(repeat_msg_idx);
+            start_play(repeat_msg_idx);
         }
         return;
     }
 
-    // 再生完了チェック
+    // 再生完了チェック（job_autoがauto_mode=falseにしたがmode=MODE_PLAYのまま）
     if (!auto_mode)
     {
-        stop_play();
         if (repeat_mode)
         {
             // 1秒後に再生再開
@@ -1660,9 +1666,9 @@ void handle_play_mode(void)
         }
         else
         {
+            stop_play();
             mode = MODE_KEYER;
             last_activity_tick = tim1_tick256;
-            // ※追加：メモリ再生終了時にタイムアウト関連をリセット
             flush_done = true;
             key_off_ticks = 0;
             key_on_ticks = 0;
@@ -1884,7 +1890,7 @@ void draw_startup_screen(void)
     ssd1306_drawstr_sz(0, 30, "Powered by", 1, fontsize_8x8);
     ssd1306_drawstr_sz(40, 40, "UIAPduino", 1, fontsize_8x8);
      ssd1306_drawFastHLine(0, 50, 128, 1);
-    ssd1306_drawstr_sz(0, 52, "Version 0.4", 1, fontsize_8x8);
+    ssd1306_drawstr_sz(0, 52, "Version 0.3", 1, fontsize_8x8);
     ssd1306_refresh();
 }
 
