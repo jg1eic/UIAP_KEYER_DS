@@ -51,7 +51,7 @@ FLASH_EEP eep;  // EEPROM emulation object
 
 // スイッチ設定
 #define SW_SCAN_DIV 20  // 0.256ms ×20 ≒5.12ms
-#define SW_PRESS_TH 127 // 長押し判定 128×5ms = 0.64秒
+#define SW_PRESS_TH 195 // 長押し判定 195×5ms ≒1秒
 #define SW_PUSH_TH 5    // 押下判定 5×5ms = 25ms
 #define SW_1 (1 << 3) 
 #define SW_2 (1 << 2)
@@ -220,8 +220,10 @@ typedef enum
 volatile StopReason stop_reason = STOP_NONE;
 
 // リピート再生
-static bool repeat_mode = false;    // リピート再生中フラグ
-static uint8_t repeat_msg_idx = 0;  // リピート対象メッセージ番号
+static bool repeat_mode = false;       // リピート再生中フラグ
+static uint8_t repeat_msg_idx = 0;     // リピート対象メッセージ番号
+static bool repeat_waiting = false;    // インターバル待機中フラグ
+static uint32_t repeat_wait_until = 0; // インターバル終了時刻 (tick単位)
 
 // スイッチの判定
 uint8_t sw_mask = 0; // スイッチ押しっぱなしをカウントしないためのマスク
@@ -1626,24 +1628,37 @@ void handle_play_mode(void)
         SW_CLEAR();
         stop_play();
         repeat_mode = false;
-        //printf("Interrupt Message\r\n");
+        repeat_waiting = false;
         mode = MODE_KEYER;
         draw_keyer_screen();
         ssd1306_refresh();
         return;
     }
 
+    // リピートインターバル待機中（1秒）
+    if (repeat_waiting)
+    {
+        if ((int32_t)(tim1_tick256 - repeat_wait_until) >= 0)
+        {
+            // インターバル終了 → 再生開始
+            repeat_waiting = false;
+            play_mem_msg(repeat_msg_idx);
+        }
+        return;
+    }
+
+    // 再生完了チェック
     if (!auto_mode)
     {
         stop_play();
         if (repeat_mode)
         {
-            // リピート：インターバルなしで再度再生
-            play_mem_msg(repeat_msg_idx);
+            // 1秒後に再生再開
+            repeat_waiting = true;
+            repeat_wait_until = tim1_tick256 + 3906; // 1秒 = 3906×0.256ms
         }
         else
         {
-            //printf("Finished Message\r\n");
             mode = MODE_KEYER;
             last_activity_tick = tim1_tick256;
             // ※追加：メモリ再生終了時にタイムアウト関連をリセット
