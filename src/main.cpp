@@ -256,7 +256,7 @@ uint32_t key_off_ticks = 0;
 bool key_on = false;
 
 //CW繝ｪ繝ｳ繧ｰ繝舌ャ繝輔ぃ
-volatile cw_event_t cw_buf[CW_BUF_SIZE];
+volatile uint8_t cw_buf[CW_BUF_SIZE];
 volatile uint8_t cw_w = 0;
 volatile uint8_t cw_r = 0;
 
@@ -1092,7 +1092,7 @@ void update_speed_from_adc()
     }
 
     // 笘・蜿ｳ遶ｯ8px・・=120縲・27, y=56縲・3・峨ｒ繧ｯ繝ｪ繧｢
-    ssd1306_fillRect(120, 56, 8, 8, 0);
+    //ssd1306_fillRect(120, 56, 8, 8, 0);
 
     // refresh
     ssd1306_refresh();
@@ -1479,7 +1479,7 @@ void cw_decode_task(void)
     uint8_t w = cw_w;
     while (cw_r != w)
     {
-        cw_event_t ev = cw_buf[cw_r];
+        cw_event_t ev = (cw_event_t)cw_buf[cw_r];
         cw_r = (cw_r + 1) % CW_BUF_SIZE;
 
         switch (ev)
@@ -1910,7 +1910,7 @@ void draw_startup_screen(void)
     ssd1306_drawstr_sz(0, 30, "Powered by", 1, fontsize_8x8);
     ssd1306_drawstr_sz(40, 40, "UIAPduino", 1, fontsize_8x8);
      ssd1306_drawFastHLine(0, 50, 128, 1);
-    ssd1306_drawstr_sz(0, 52, "Version 0.1", 1, fontsize_8x8);
+    ssd1306_drawstr_sz(0, 52, "Version 0.2", 1, fontsize_8x8);
     ssd1306_refresh();
 }
 
