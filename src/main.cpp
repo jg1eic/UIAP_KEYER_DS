@@ -150,12 +150,13 @@ volatile bool edit_tick_10ms = false; // EDIT用10msタイマーフラグ
 
 char msgs[MSG_NUM][MSG_LEN + 1]; // メッセージバッファ
 
-const char default_msgs[MSG_NUM][MSG_LEN] = {
+// ポインタ配列にして実文字列分のFlashのみ使用（ゼロパディング不要）
+static const char * const default_msgs[MSG_NUM] = {
     "CQ TEST JO1YGK",
     "5NN 13M BK",
-    "TEST MESSAGE 3",
-    "TEST MESSAGE 4"
-    }; // デフォルトメッセージ
+    "TU DE JO1YGK K",
+    "QRZ? DE JO1YGK"
+}; // デフォルトメッセージ
 
 static uint8_t cur_msg = 0;  // 編集メモリ番号
 static uint8_t edit_pos = 0; // カーソル位置
@@ -1883,7 +1884,7 @@ void draw_startup_screen(void)
     ssd1306_drawstr_sz(0, 30, "Powered by", 1, fontsize_8x8);
     ssd1306_drawstr_sz(40, 40, "UIAPduino", 1, fontsize_8x8);
      ssd1306_drawFastHLine(0, 50, 128, 1);
-    ssd1306_drawstr_sz(0, 52, "Version 0.3", 1, fontsize_8x8);
+    ssd1306_drawstr_sz(0, 52, "Version 0.4", 1, fontsize_8x8);
     ssd1306_refresh();
 }
 
