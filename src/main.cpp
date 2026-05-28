@@ -228,8 +228,6 @@ volatile StopReason stop_reason = STOP_NONE;
 // リピート再生
 static bool repeat_mode = false;       // リピート再生中フラグ
 static uint8_t repeat_msg_idx = 0;     // リピート対象メッセージ番号
-static bool repeat_waiting = false;    // インターバル待機中フラグ
-static uint32_t repeat_wait_until = 0; // インターバル終了時刻 (tick単位)
 
 // スイッチの判定
 uint8_t sw_mask = 0; // スイッチ押しっぱなしをカウントしないためのマスク
@@ -756,9 +754,10 @@ uint8_t job_auto(void)
     typedef enum {
         AUTO_IDLE = 0,      // 次の文字取得
         AUTO_ELEM_ON,       // 要素(dit/dah) ON 中
-        AUTO_ELEM_OFF,      // 要素閁EOFF (1 dit)
+        AUTO_ELEM_OFF,      // 要素間OFF (1 dit)
         AUTO_CHAR_GAP,      // 文字間ギャップ (3 dit)
-        AUTO_WORD_GAP       // 単語間ギャップ (7 dit)
+        AUTO_WORD_GAP,      // 単語間ギャップ (7 dit)
+        AUTO_REPEAT_WAIT    // リピート待機中 (1秒インターバル)
     } auto_state_t;
 
     static auto_state_t state = AUTO_IDLE;
@@ -767,6 +766,7 @@ uint8_t job_auto(void)
     static const char *seq = nullptr;
     static uint8_t elem = 0;
     static uint16_t pos = 0;
+    static uint32_t gap_until = 0;   // リピート待機終了時刻
 
     // システムメッセージ中は固定速度
     // ※WPM 可変対応：毎回最新の key_spd を参照
@@ -781,6 +781,7 @@ uint8_t job_auto(void)
         seq = nullptr;
         elem = 0;
         pos = 0;
+        gap_until = 0;
         return 0;
     }
 
@@ -811,21 +812,22 @@ uint8_t job_auto(void)
 
                 // メッセージ終端
                 if (c == '\0') {
-                    auto_mode = false;
-                    req_reset_auto = true;
-                    auto_msg = NULL;
                     morse_len = 0;
-                    last_activity_tick = tim1_tick256;
                     cw_r = cw_w;
                     key_off_ticks = 0;
                     key_on_ticks = 0;
                     flush_done = true;
 
                     if (repeat_mode) {
-                        // リピートモード：mode=MODE_PLAYのまま
-                        // handle_play_mode() がインターバル後に再生する
+                        // リピートモード：1秒待機してから最初から再生
+                        state = AUTO_REPEAT_WAIT;
+                        gap_until = tim1_tick256 + 3906; // 1秒 = 3906×0.256ms
+                        half_rem = 0;
                     } else {
                         // 通常終了
+                        auto_mode = false;
+                        req_reset_auto = true;
+                        auto_msg = NULL;
                         sys_msg_active = false;
                         keyout_enabled = true;
                         mode = MODE_KEYER;
@@ -886,21 +888,27 @@ uint8_t job_auto(void)
                     char next = auto_msg[pos + 1];
 
                     if (next == '\0') {
-                        // メッセージ末尾 →ここで終了
-                        auto_mode = false;
-                        req_reset_auto = true;
-                        auto_msg = NULL;
-                        sys_msg_active = false;
-                        keyout_enabled = true;
-                        mode = MODE_KEYER;
-
+                        // メッセージ末尾
                         morse_len = 0;
                         cw_r = cw_w;
                         key_off_ticks = 0;
                         key_on_ticks = 0;
                         flush_done = true;
 
-                        //draw_keyer_screen();
+                        if (repeat_mode) {
+                            // リピートモード：1秒待機してから最初から再生
+                            state = AUTO_REPEAT_WAIT;
+                            gap_until = tim1_tick256 + 3906; // 1秒 = 3906×0.256ms
+                            half_rem = 0;
+                        } else {
+                            // 通常終了
+                            auto_mode = false;
+                            req_reset_auto = true;
+                            auto_msg = NULL;
+                            sys_msg_active = false;
+                            keyout_enabled = true;
+                            mode = MODE_KEYER;
+                        }
                         return 0;
                     } else if (next == ' ') {
                         // ※ここでスペースをつ表示する
@@ -936,6 +944,16 @@ uint8_t job_auto(void)
             case AUTO_WORD_GAP:
                 // 単語間ギャップ終了→次の文字へ
                 state = AUTO_IDLE;
+                break;
+
+            case AUTO_REPEAT_WAIT:
+                // リピート待機中：1秒経過したら最初から再生
+                if ((int32_t)(tim1_tick256 - gap_until) >= 0) {
+                    pos = 0;
+                    seq = nullptr;
+                    elem = 0;
+                    state = AUTO_IDLE;
+                }
                 break;
 
             default:
@@ -1636,43 +1654,23 @@ void handle_play_mode(void)
         SW_CLEAR();
         stop_play();
         repeat_mode = false;
-        repeat_waiting = false;
         mode = MODE_KEYER;
         draw_keyer_screen();
         ssd1306_refresh();
         return;
     }
 
-    // リピートインターバル待機中（1秒）
-    if (repeat_waiting)
+    // 再生完了チェック
+    // リピートモード中は job_auto 内の AUTO_REPEAT_WAIT が1秒待機後に
+    // 自動で先頭へ戻るため、ここでは非リピート完了のみ処理する
+    if (!auto_mode && !repeat_mode)
     {
-        if ((int32_t)(tim1_tick256 - repeat_wait_until) >= 0)
-        {
-            // インターバル終了 → 再生開始（start_playで完全初期化）
-            repeat_waiting = false;
-            start_play(repeat_msg_idx);
-        }
-        return;
-    }
-
-    // 再生完了チェック（job_autoがauto_mode=falseにしたがmode=MODE_PLAYのまま）
-    if (!auto_mode)
-    {
-        if (repeat_mode)
-        {
-            // 1秒後に再生再開
-            repeat_waiting = true;
-            repeat_wait_until = tim1_tick256 + 3906; // 1秒 = 3906×0.256ms
-        }
-        else
-        {
-            stop_play();
-            mode = MODE_KEYER;
-            last_activity_tick = tim1_tick256;
-            flush_done = true;
-            key_off_ticks = 0;
-            key_on_ticks = 0;
-        }
+        stop_play();
+        mode = MODE_KEYER;
+        last_activity_tick = tim1_tick256;
+        flush_done = true;
+        key_off_ticks = 0;
+        key_on_ticks = 0;
     }
 }
 
