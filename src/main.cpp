@@ -150,18 +150,11 @@ volatile bool edit_tick_10ms = false; // EDIT用10msタイマーフラグ
 
 char msgs[MSG_NUM][MSG_LEN + 1]; // メッセージバッファ
 
-//const char default_msgs[MSG_NUM][MSG_LEN] = {
-//    "CQ TEST JO1YGK",
-//    "5NN 13M BK",
-//    "TEST MESSAGE 3",
-//    "TEST MESSAGE 4"
-//    }; // デフォルトメッセージ
-
 const char default_msgs[MSG_NUM][MSG_LEN] = {
-    "CQ CQ CQ DE JA1AOQ JA1AOQ JA1AOQ K",
-    "THIS IS A TEST MESSAGE FOR UIAPDUINO CW DECODER",
-    "A QUICK BROWN FOX JUMPES OVER THE LAZY DOG",
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?.=+-@"
+    "CQ TEST JO1YGK",
+    "5NN 13M BK",
+    "TEST MESSAGE 3",
+    "TEST MESSAGE 4"
     }; // デフォルトメッセージ
 static uint8_t cur_msg = 0;  // 編集メモリ番号
 static uint8_t edit_pos = 0; // カーソル位置
