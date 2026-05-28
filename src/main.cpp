@@ -21,7 +21,7 @@ FLASH_EEP eep;  // EEPROM emulation object
 //==========================================
 // 常数・マクロ
 //==========================================
-// スクイズ状態（半チE��チE��単位�E状態機械�E�E
+// スクイズ状態（半ディット単位）の状態機械
 #define SQZ_FREE 0
 #define SQZ_SPC0 1
 #define SQZ_SPC 2
@@ -32,27 +32,27 @@ FLASH_EEP eep;  // EEPROM emulation object
 #define SQZ_DAH_CONT 7
 #define SQZ_DASH 8
 
-// パドル状慁E
+// パドル状態
 #define PDL_DOT 1
 #define PDL_DASH 2
 #define PDL_FREE 0
 
-#define SQUEEZE_TYPE 0 // スクイーズモーチE
+#define SQUEEZE_TYPE 0 // スクイーズモード
 #define PDL_RATIO 4    // 短点・長点比率
 
 #define WPM_MAX 40 // 最大速度
 #define WPM_MIN 5  // 最小速度
 
-// ト�Eン設宁E
+// トーン設定
 #define TONE_DIV 3 // 周波数調整
 // 2-->976Hz
 // 3-->651Hz
 // 4-->488Hz
 
-// スイチE��設宁E
-#define SW_SCAN_DIV 20  // 0.256ms ÁE20 ≁E5.12ms
-#define SW_PRESS_TH 127 // 長押し判定！Ems ÁE128 = 0.64秒！E
-#define SW_PUSH_TH 5    // 押下判定！Ems ÁE5 = 25ms�E�E
+// スイッチ設定
+#define SW_SCAN_DIV 20  // 0.256ms ×20 ≒5.12ms
+#define SW_PRESS_TH 127 // 長押し判定 128×5ms = 0.64秒
+#define SW_PUSH_TH 5    // 押下判定 5×5ms = 25ms
 #define SW_1 (1 << 3) 
 #define SW_2 (1 << 2)
 #define SW_3 (1 << 1)
@@ -60,14 +60,14 @@ FLASH_EEP eep;  // EEPROM emulation object
 #define SW_INFO_CLICK 0x10
 #define SW_INFO_PRESS 0x20
 #define SW_INFO_DOUBLE 0x40
-#define SW_CLEAR() (sw_mask = 0b00001111) // 一度スイチE��を離すまでカウントをしなぁE
+#define SW_CLEAR() (sw_mask = 0b00001111) // 一度スイッチを離すまでカウントをしない
 #define MASK_MODE 0xf0
 
-// EDIT操作�Eリピ�Eト設定（体感調整済み�E�E
-#define EDIT_REPEAT_START 15 // 15 ÁE10ms = 150ms
-#define EDIT_REPEAT_SPEED 5  // 5 ÁE10ms = 50ms
+// EDIT操作のリピート設定（体感調整済み）
+#define EDIT_REPEAT_START 15 // 15 ×10ms = 150ms
+#define EDIT_REPEAT_SPEED 5  // 5 ×10ms = 50ms
 
-// チE��チE��モーチE
+// ディットモード
 #define DEBUG_MODE_PRINT 0
 
 #ifndef PWR_CTLR_CWUF
@@ -83,17 +83,17 @@ FLASH_EEP eep;  // EEPROM emulation object
 #define PAGE_MSG3 2
 #define PAGE_MSG4 3
 
-// メチE��ージ用変数
-#define MSG_NUM 4  // メモリ数�E�EW1 / SW2 / SW3 / SW4�E�E
-#define MSG_LEN 64 // 1メチE��ージの最大斁E��数
+// メッセージ用変数
+#define MSG_NUM 4  // メモリ数（SW1 / SW2 / SW3 / SW4）
+#define MSG_LEN 64 // 1メッセージの最大文字数
 #define EDIT_TABLE_LEN (sizeof(edit_table) - 1)
 
 // チャタリング除去用
-#define MIN_ON_TICKS 50 //0.256ms ÁE50 = 12.8ms
-#define MIN_OFF_TICKS 50 //0.256ms ÁE50 = 12.8ms
+#define MIN_ON_TICKS 50 //0.256ms ×50 = 12.8ms
+#define MIN_OFF_TICKS 50 //0.256ms ×50 = 12.8ms
 
-//チE��ード用閾値
-#define DIT_TICKS      250   // 0.256ms ÁE250 = 64ms (20WPM相彁E
+//デコード用閾値
+#define DIT_TICKS      250   // 0.256ms ×250 = 64ms (20WPM相当
 #define DOT_MAX        (2 * dit_est)
 //#define CHAR_GAP_MIN   (1.5 * dit_est)
 #define CHAR_GAP_MIN   (dit_est * 3u / 2u)   // 整数演算で同等
@@ -111,19 +111,19 @@ typedef enum
 {
     MODE_KEYER = 0,   // 通常キーイング
     MODE_PLAY,        // メモリ再生中
-    MODE_EDIT_SELECT, // 編雁E��モリ選抁E
-    MODE_EDIT,        // 編雁E��ーチE
-    MODE_SETUP        // 設定（封E���E�E
+    MODE_EDIT_SELECT, // 編集メモリ選択
+    MODE_EDIT,        // 編集モード
+    MODE_SETUP        // 設定（未実装）
 } keyer_mode_t;
 
-// 斁E��編雁E��
+// 文字編集状態
 typedef enum
 {
-    EDIT_CHAR_SELECT = 0, // 斁E��選択中
-    EDIT_POS_MOVE         // カーソル移動中�E�封E��拡張�E�E
+    EDIT_CHAR_SELECT = 0, // 文字選択中
+    EDIT_POS_MOVE         // カーソル移動中（将来拡張）
 } edit_state_t;
 
-// 斁E��編雁E��にパドル検�E用
+// 文字編集中にパドル検出用
 typedef struct
 {
     bool dot;
@@ -144,36 +144,36 @@ typedef enum {
 // グローバル変数
 //==========================================
 
-volatile uint8_t tone_div = 0;        // ト�Eン刁E��カウンタ
-volatile bool tone_on = false;        // ト�Eン出力中フラグ
-volatile bool edit_tick_10ms = false; // EDIT用10msタイマ�Eフラグ
+volatile uint8_t tone_div = 0;        // トーン分周カウンタ
+volatile bool tone_on = false;        // トーン出力中フラグ
+volatile bool edit_tick_10ms = false; // EDIT用10msタイマーフラグ
 
-char msgs[MSG_NUM][MSG_LEN + 1]; // メチE��ージバッファ
+char msgs[MSG_NUM][MSG_LEN + 1]; // メッセージバッファ
 
 const char default_msgs[MSG_NUM][MSG_LEN] = {
     "CQ TEST JO1YGK",
     "5NN 13M BK",
     "TEST MESSAGE 3",
     "TEST MESSAGE 4"
-    }; // チE��ォルトメチE��ージ
+    }; // デフォルトメッセージ
 
-static uint8_t cur_msg = 0;  // 編雁E��メモリ番号
+static uint8_t cur_msg = 0;  // 編集メモリ番号
 static uint8_t edit_pos = 0; // カーソル位置
 
 static const char edit_table[] =
-    " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?.=+-@"; // 編雁E��斁E��テーブル
+    " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?.=+-@"; // 編集文字テーブル
 
-#define DISP_COLS 10 // 画面に表示する斁E��数�E�編雁E��チE��ージ�E�E
+#define DISP_COLS 10 // 画面に表示する文字数（編集メッセージ）
 
 static uint8_t edit_view_left = 0; // 表示ウィンドウ先頭
-static uint8_t edit_len = 0;       // 現在の斁E��数
+static uint8_t edit_len = 0;       // 現在の文字数
 volatile bool edit_tick = false;
 
 // キーイング用変数
 int key_spd = 1000;
-int key_spd_sys = 1000; // シスチE��メチE��ージ用の速度�E�固定値�E�E
+int key_spd_sys = 1000; // システムメッセージ用の速度（固定値）
 int wpm = 20;
-int wpm_sys = 20; // シスチE��メチE��ージ用のWPM�E�固定値�E�E
+int wpm_sys = 20; // システムメッセージ用のWPM（固定値）
 bool tone_enabled = false;
 int squeeze = 0;
 int paddle = PDL_FREE;
@@ -185,50 +185,50 @@ volatile uint32_t tim1_tick256 = 0;
 static uint32_t key_last_tick = 0;
 static bool key_state = false; // false=OFF, true=ON
 
-// 編雁E��カウンタ
+// 編集カウンタ
 static keyer_mode_t mode = MODE_KEYER;
 
-// EDIT用パドル状慁E
+// EDIT用パドル状態
 static uint16_t edit_dot_cnt = 0;
 static uint16_t edit_dash_cnt = 0;
-static bool edit_dot_prev = false;  // 前フレームのDOT状慁E
-static bool edit_dash_prev = false; // 前フレームのDASH状慁E
-static uint8_t edit_first = 1;      // ☁E追加�E�EDIT初回フラグ
+static bool edit_dot_prev = false;  // 前フレームのDOT状態
+static bool edit_dash_prev = false; // 前フレームのDASH状態
+static uint8_t edit_first = 1;      // EDIT初回フラグ
 
-// ==== dit推宁E====
-uint32_t dit_est = DIT_TICKS;        // 初期値�E�E0WPM相当！E
+// ==== dit推定 ====
+uint32_t dit_est = DIT_TICKS;        // 初期値（20WPM相当）
 
-/* ==== 割り込み ↁEmain loop 共朁E==== */
+/* ==== 割り込み / main loop 共有 ==== */
 volatile bool in_dot = false;
 volatile bool in_dash = false;
 
 // ==== 自動送信制御 ====
-// 起動時は何もしなぁE
-volatile bool auto_mode = false;  // 今、�E動送信中ぁE
-volatile bool auto_armed = false; // SWAを一度でも押したか！Erueで “�E動送信機�Eが有効”！E
+// 起動時は何もしない
+volatile bool auto_mode = false;  // 今、自動送信中か
+volatile bool auto_armed = false; // SWAを一度でも押したか。trueで “自動送信機能が有効”
 volatile bool req_start_auto = false;
 volatile bool req_reset_auto = false;
 
-// 停止琁E���E�ラチE��停止�E�E
+// 停止理由（ラッチ停止）
 typedef enum
 {
     STOP_NONE = 0,
-    STOP_PADDLE = 1, // DOT/DASHで停止�E�ラチE���E�E
-    STOP_SWB = 2,    // SWBで停止�E�ラチE���E�E
+    STOP_PADDLE = 1, // DOT/DASHで停止（ラッチ）
+    STOP_SWB = 2,    // SWBで停止（ラッチ）
 } StopReason;
 
 volatile StopReason stop_reason = STOP_NONE;
 
-// スイチE��の判宁E
-uint8_t sw_mask = 0; // スイチE��押しっぱなしをカウントしなぁE��め�Eマスク
+// スイッチの判定
+uint8_t sw_mask = 0; // スイッチ押しっぱなしをカウントしないためのマスク
 uint8_t sw_clicked = 0;
-uint8_t count_sw[4]; // スイチE��長押しとかカウンチE
+uint8_t count_sw[4]; // スイッチ長押しとかカウンター
 volatile uint8_t sw_stat;
 volatile uint8_t sw_mode;
 
-// ==== 汎用 CW メチE��ージ再生 ====
-const char *auto_msg = NULL; // 実際に再生する斁E���E
-bool sys_msg_active = false; // シスチE��メチE��ージか！E
+// ==== 汎用 CW メッセージ再生 ====
+const char *auto_msg = NULL; // 実際に再生する文字列
+bool sys_msg_active = false; // システムメッセージか
 volatile bool keyout_enabled = true;       // 通常はON
 volatile bool ignore_paddle_input = false; // パドル入力を無視するフラグ
 
@@ -242,7 +242,7 @@ volatile uint8_t cw_buf[CW_BUF_SIZE];
 volatile uint8_t cw_w = 0;
 volatile uint8_t cw_r = 0;
 
-//モールス斁E��バチE��ァ
+//モールス文字バッファ
 volatile bool flush_done = false;
 
 //モールス符号バッファ
@@ -257,7 +257,7 @@ uint8_t morse_len = 0;
 // グローバルに追加
 int last_wpm = -999;
 
-// 無操作タイマ�E
+// 無操作タイマー
 volatile uint32_t last_activity_tick = 0;
 
 static inline uint32_t exti_line_from_pin(uint32_t pin)
@@ -301,7 +301,7 @@ uint32_t standby_magic;
 
 
 //==========================================
-// 関数プロトタイチE
+// 関数プロトタイプ
 //==========================================
 static const char *morseForChar(char c);
 static void printAsc(int8_t asciinumber);
@@ -333,11 +333,11 @@ void init_flash_messages(void);
 void save_current_message_to_flash(void);
 
 //==========================================
-// Morse チE�Eブル
+// Morse テーブル
 //==========================================
 static const char *morseForChar(char c)
 {
-    // 小文孁Eb は “BT E-...-) 扱ぁE��区刁E��用途！E
+    // 小文字b は “BT” (E-...-) 扱い
     // if (c == '=')
     //     return "-...-";
     // if (c == '+')
@@ -427,7 +427,7 @@ static const char *morseForChar(char c)
     case '9':
         return "----.";
 
-    // Punctuation (忁E��そぁE��のだぁE
+    // Punctuation (必要なものだけ)
     case '.':
         return ".-.-.-";
     case ',':
@@ -482,26 +482,26 @@ static void reset_decoded_display(void)
 //==========================================
 static void redraw_lines(void)
 {
-    // ---- 衁E�E�E = 16�E�E---
+    // ---- 行 = 16 ---
     for (int i = 0; i < colums; i++) {
         ssd1306_drawchar_sz(i * FONT_WIDTH, LINE_HEIGHT * 1,
                             line1[i], FONT_COLOR, FONT_SCALE_16X16);
     }
 
-    // ---- 衁E�E�E = 32�E�E---
+    // ---- 行 = 32 ---
     for (int i = 0; i < colums; i++) {
         ssd1306_drawchar_sz(i * FONT_WIDTH, LINE_HEIGHT * 2,
                             line2[i], FONT_COLOR, FONT_SCALE_16X16);
     }
 
-    // ---- 衁E�E�E = 48�E�E---
+    // ---- 行 = 48 ---
     for (int i = 0; i < colums; i++) {
-        //ssd1306_fillRect(0, 48, 128, 16, 0); // 衁E全体消す
+        //ssd1306_fillRect(0, 48, 128, 16, 0); // 行全体消す
         ssd1306_drawchar_sz(i * FONT_WIDTH, LINE_HEIGHT * 3,
                             line3[i], FONT_COLOR, FONT_SCALE_16X16);
     }
 
-    // ---- 右端クリア�E�保険として残す�E�E---
+    // ---- 右端クリア（保険として残す）---
     int used_width = FONT_WIDTH * colums;   // 16 * 8 = 128
     if (used_width < 128) {
         int clear_w = 128 - used_width;
@@ -513,28 +513,28 @@ static void redraw_lines(void)
 
 static void printAsc(int8_t asciinumber)
 {
-    // 行がぁE��ぱぁEↁEスクロール
+    // 行がいっぱい→スクロール
     if (lcdindex >= colums) {
 
-        // 衁E ↁE衁E
+        // 行 →行
         memcpy(line1, line2, colums);
 
-        // 衁E ↁE衁E
+        // 行 →行
         memcpy(line2, line3, colums);
 
-        // 衁E をクリア
+        // 行 をクリア
         memset(line3, ' ', colums);
 
         lcdindex = 0;
     }
 
-    // 衁E に新しい斁E��を追加
+    // 行 に新しい文字を追加
     line3[lcdindex++] = asciinumber;
 
-    // ☁E行�E体を描画�E�部刁E��画はしなぁE��E
+    // ※行全体を描画（部分描画はしない）
     redraw_lines();
 
-    // ☁Erefresh は毎回�E�乱れ防止�E�E
+    // ※refresh は毎回（乱れ防止）
     //    __disable_irq();
     ssd1306_refresh();
     // oled_refreshed_this_frame = true;
@@ -572,15 +572,15 @@ static void printAscii(int8_t c)
     }
 }
 
-// ト�Eン出力トグル
+// トーン出力トグル
 static inline void toggle_tone_pin(void)
 {
-    GPIOC->OUTDR ^= (1 << 7); // PC7 の侁E
+    GPIOC->OUTDR ^= (1 << 7); // PC7 のトグル
 }
 
 
 //==========================================
-// フラチE��ュメモリ読み出し�E妥当性確誁E
+// フラッシュメモリ読み出し・妥当性確認
 //==========================================
 static bool is_valid_message(const uint8_t *buf)
 {
@@ -604,7 +604,7 @@ static bool is_valid_message(const uint8_t *buf)
 }
 
 //==========================================
-// フラチE��ュメモリ読み出し＋�E期化
+// フラッシュメモリ読み出し＋初期化
 //==========================================
 void init_flash_messages(void)
 {
@@ -619,7 +619,7 @@ void init_flash_messages(void)
 
         if (!is_valid_message(buf))
         {
-            // Flashが空 or ゴチEↁEチE��ォルト投入
+            // Flashが空 or ゴミ→デフォルト投入
             strncpy(msgs[i], default_msgs[i], MSG_LEN - 1);
             msgs[i][MSG_LEN - 1] = '\0';
             //printf("MSG%d: default\n", i + 1);
@@ -634,12 +634,12 @@ void init_flash_messages(void)
 }
 
 //==========================================
-// フラチE��ュメモリ書き込み
+// フラッシュメモリ書き込み
 //==========================================
 void save_current_message_to_flash(void)
 {
     uint8_t buf[FLASH_PAGE_SIZE];
-    int page = cur_msg; // MSG番号 = ペ�Eジ番号
+    int page = cur_msg; // MSG番号 = ページ番号
 
     memset(buf, 0xFF, sizeof(buf));
     strncpy((char *)buf, msgs[cur_msg], MSG_LEN);
@@ -651,14 +651,14 @@ void save_current_message_to_flash(void)
 }
 
 //==========================================
-// 手動パドル処琁E��EWA/SWBは混ぜなぁE��E
+// 手動パドル処理（SWA/SWBは混ぜない）
 //==========================================
 uint8_t job_paddle()
 {
     static uint32_t left_time = 0;
     uint8_t key_dot, key_dash;
 
-    // パドル入力を無視する場合、状態をリセチE��して終亁E
+    // パドル入力を無視する場合、状態をリセットして終了
     if (ignore_paddle_input)
     {
         paddle = PDL_FREE;
@@ -736,31 +736,31 @@ uint8_t job_paddle()
 }
 
 //==========================================
-// 自動送信処琁E��半チE��チE��単位�E簡略版！E
+// 自動送信処理（半ディット単位）簡略版
 //==========================================
 uint8_t job_auto(void)
 {
-    // 半ディチE��単位�E状態機械
+    // 半ディット単位の状態機械
     typedef enum {
-        AUTO_IDLE = 0,      // 次の斁E��征E��
+        AUTO_IDLE = 0,      // 次の文字取得
         AUTO_ELEM_ON,       // 要素(dit/dah) ON 中
         AUTO_ELEM_OFF,      // 要素閁EOFF (1 dit)
-        AUTO_CHAR_GAP,      // 斁E��間ギャチE�E (3 dit)
-        AUTO_WORD_GAP       // 単語間ギャチE�E (7 dit)
+        AUTO_CHAR_GAP,      // 文字間ギャップ (3 dit)
+        AUTO_WORD_GAP       // 単語間ギャップ (7 dit)
     } auto_state_t;
 
     static auto_state_t state = AUTO_IDLE;
-    static uint32_t left_time = 0;   // 0.5dit タイチE
+    static uint32_t left_time = 0;   // 0.5dit タイマー
     static uint8_t half_rem = 0;     // 残り half-dit 数
     static const char *seq = nullptr;
     static uint8_t elem = 0;
     static uint16_t pos = 0;
 
-    // シスチE��メチE��ージ中は固定速度
-    // ☁EWPM 可変対応：毎回最新の key_spd を参照
+    // システムメッセージ中は固定速度
+    // ※WPM 可変対応：毎回最新の key_spd を参照
     int current_key_spd = sys_msg_active ? key_spd_sys : key_spd;
 
-    // リセチE��要汁E
+    // リセット要求
     if (req_reset_auto) {
         req_reset_auto = false;
         state = AUTO_IDLE;
@@ -772,32 +772,32 @@ uint8_t job_auto(void)
         return 0;
     }
 
-    // 自動送信でなければ何もしなぁE
+    // 自動送信でなければ何もしない
     if (!auto_mode || auto_msg == NULL) {
         return 0;
     }
 
     last_activity_tick = tim1_tick256;
 
-    // ☁E0.5dit タイマ�E琁E��最新速度で毎回リセチE���E�E
+    // ※0.5dit タイマー：最新速度で毎回リセット
     if (left_time > 0) {
         left_time--;
     } else {
-        left_time = current_key_spd / 2;  // ↁEここが毎回最新になめE
+        left_time = current_key_spd / 2;  // →ここが毎回最新になる
 
 
         if (half_rem > 0) {
             half_rem--;
         }
 
-        // half_rem ぁE0 になったら次の状態へ
+        // half_rem い0 になったら次の状態へ
         if (half_rem == 0) {
             switch (state) {
 
             case AUTO_IDLE: {
                 char c = auto_msg[pos];
 
-                // メチE��ージ終端
+                // メッセージ終端
                 if (c == '\0') {
                     auto_mode = false;
                     req_reset_auto = true;
@@ -806,7 +806,7 @@ uint8_t job_auto(void)
                     keyout_enabled = true;
                     mode = MODE_KEYER;
 
-                    // チE��ード系のリセチE���E��Eコード踏襲�E�E
+                    // デコード系のリセット（コード踏襲）
                     morse_len = 0;
     last_activity_tick = tim1_tick256;
 
@@ -819,15 +819,15 @@ uint8_t job_auto(void)
                     return 0;
                 }
 
-                // スペ�Eス ↁE単語間ギャチE�E
+                // スペース →単語間ギャップ
                 if (c == ' ') {
 
-                    // ☁E追加�E�スペ�EスめELCD に表示
+                    // ※追加スペースをLCDに表示
                     if (!sys_msg_active) {
                         printAscii(' ');
                     }
 
-                    // 連続スペ�EスをスキチE�E
+                    // 連続スペースをスキップ
                     while (auto_msg[pos] == ' ') {
                         pos++;
                     }
@@ -836,30 +836,30 @@ uint8_t job_auto(void)
                     break;
                 }
 
-                // 通常斁E��E
+                // 通常文字
                 if (!sys_msg_active) {
-                    printAscii(c); // 送信斁E��を表示
+                    printAscii(c); // 送信文字を表示
                 }
 
                 seq = morseForChar(c);
                 elem = 0;
 
                 if (seq == nullptr) {
-                    // 未対応文孁EↁEスペ�Eス扱ぁE
+                    // 未対応文字→スペース扱い
                     pos++;
                     state = AUTO_WORD_GAP;
                     half_rem = 14;
                     break;
                 }
 
-                // 最初�E要素を送信開姁E
+                // 最初の要素を送信開始
                 state = AUTO_ELEM_ON;
                 half_rem = (seq[elem] == '.') ? 2 : 6; // dit=1dit=2half, dah=3dit=6half
                 break;
             }
 
             case AUTO_ELEM_ON:
-                // 要素 ON 終亁EↁE要素閁EOFF (1 dit)
+                // 要素 ON 終了→要素間OFF (1 dit)
                 state = AUTO_ELEM_OFF;
                 half_rem = 2; // 1 dit = 2 half-dit
                 break;
@@ -868,11 +868,11 @@ uint8_t job_auto(void)
                 // 次の要素へ
                 elem++;
                 if (seq[elem] == '\0') {
-                    // 斁E���E最後�E要素が終わっぁE
+                    // 文字の最後の要素が終わった
                     char next = auto_msg[pos + 1];
 
                     if (next == '\0') {
-                        // メチE��ージ末尾 ↁEここで終亁E
+                        // メッセージ末尾 →ここで終了
                         auto_mode = false;
                         req_reset_auto = true;
                         auto_msg = NULL;
@@ -889,38 +889,38 @@ uint8_t job_auto(void)
                         //draw_keyer_screen();
                         return 0;
                     } else if (next == ' ') {
-                        // ☁Eここでスペ�EスめEつ表示する
+                        // ※ここでスペースをつ表示する
                         if (!sys_msg_active) {
                             printAscii(' ');
                         }
 
-                        // 次がスペ�Eス ↁE単語間ギャチE�E
-                        pos++; // 現在の斁E��を進める
+                        // 次がスペース →単語間ギャップ
+                        pos++; // 現在の文字を進める
                         while (auto_msg[pos] == ' ') {
                             pos++;
                         }
                         state = AUTO_WORD_GAP;
                         half_rem = 14; // 7 dit
                     } else {
-                        // 次も文孁EↁE斁E��間ギャチE�E
-                        pos++; // 次の斁E��へ
+                        // 次も文字→文字間ギャップ
+                        pos++; // 次の文字へ
                         state = AUTO_CHAR_GAP;
                         half_rem = 6; // 3 dit
                     }
                 } else {
-                    // まだ要素が残ってぁE�� ↁE次の要素 ON
+                    // まだ要素が残ってい →次の要素 ON
                     state = AUTO_ELEM_ON;
                     half_rem = (seq[elem] == '.') ? 2 : 6;
                 }
                 break;
 
             case AUTO_CHAR_GAP:
-                // 斁E��間ギャチE�E終亁EↁE次の斁E��へ
+                // 文字間ギャップ終了→次の文字へ
                 state = AUTO_IDLE;
                 break;
 
             case AUTO_WORD_GAP:
-                // 単語間ギャチE�E終亁EↁE次の斁E��へ
+                // 単語間ギャップ終了→次の文字へ
                 state = AUTO_IDLE;
                 break;
 
@@ -931,12 +931,12 @@ uint8_t job_auto(void)
         }
     }
 
-    // 出力：要素 ON 状態�Eときだけキー ON
+    // 出力：要素 ON 状態のときだけキー ON
     return (state == AUTO_ELEM_ON) ? 1 : 0;
 }
 
 //==========================================
-// ト�Eン制御
+// トーン制御
 //==========================================
 void startTone()
 {
@@ -944,7 +944,7 @@ void startTone()
 
     if (keyout_enabled)
     {
-        GPIO_digitalWrite(PIN_KEYOUT, high); // ☁E��常のみキーイング
+        GPIO_digitalWrite(PIN_KEYOUT, high); // ※常のみキーイング
     }
 }
 
@@ -956,7 +956,7 @@ void stopTone()
 
     if (keyout_enabled)
     {
-        GPIO_digitalWrite(PIN_KEYOUT, low); // ☁E��常のみキーイング
+        GPIO_digitalWrite(PIN_KEYOUT, low); // ※常のみキーイング
     }
 }
 
@@ -985,7 +985,7 @@ static inline long map(long x,
                        long in_min, long in_max,
                        long out_min, long out_max)
 {
-    // Arduino本家と同じくゼロ除算チェチE��はしなぁE��En_max == in_min だと未定義�E�E
+    // Arduino本家と同じくゼロ除算チェックはしない（n_max == in_min だと未定義動作）
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
@@ -999,7 +999,7 @@ static void draw_wpm_value(void)
 }
 
 //==========================================
-// ADCからスピ�Eド読み込み
+// ADCからスピード読み込み
 //==========================================
 void update_speed_from_adc()
 {
@@ -1017,18 +1017,18 @@ void update_speed_from_adc()
     // WPM描画
     draw_wpm_value();
 
-    // メモリ再生中は printAsc() ぁErefresh する
+    // メモリ再生中は printAsc() いrefresh する
     if (mode == MODE_PLAY) {
         return;
     }
 
-    // ☁E衁Eを�E描画�E�Eage6/page7の上�E�E�E
+    // ※行全体を描画（page6/page7の上部）
     for (int i = 0; i < colums; i++) {
         ssd1306_drawchar_sz(i * FONT_WIDTH, LINE_HEIGHT * 3,
                             line3[i], FONT_COLOR, FONT_SCALE_16X16);
     }
 
-    // ☁E右端8px�E�E=120、E27, y=56、E3�E�をクリア
+    // ※右端8px（x=120、w=27, y=56、h=3）をクリア
     //ssd1306_fillRect(120, 56, 8, 8, 0);
 
     // refresh
@@ -1038,17 +1038,17 @@ void update_speed_from_adc()
 
 
 //==========================================
-// スイチE��状態確認（各ハンドラから呼ぶ)
+// スイッチ状態確認（各ハンドラから呼ぶ)
 //==========================================
 void update_switch_status(void)
 {
 
-    // スイチE��確誁E
+    // スイッチ確認
     sw_stat = sw_get_info();
     sw_mode = sw_stat & MASK_MODE;
     sw_stat &= ~MASK_MODE;
 
-    // チE��チE��表示
+    // ディット表示
     // if (sw_stat)
     // {
     //     //printf("SW mode=%02X stat=%02X mask=%02X\n",
@@ -1057,7 +1057,7 @@ void update_switch_status(void)
 }
 
 /**
- * @brief  スイチE��カウンタ
+ * @brief  スイッチカウンタ
  */
 uint8_t sw_chatter(uint8_t sw, uint8_t *counter)
 {
@@ -1065,7 +1065,7 @@ uint8_t sw_chatter(uint8_t sw, uint8_t *counter)
 
     if (sw)
     {
-        // カウンタぁE55に達してぁE��ければ、カウンタめE増やぁE
+        // カウンタが55に達していなければ、カウンタを増やす
         *counter += ((*counter != 255) ? 1 : 0);
     }
     else
@@ -1077,8 +1077,8 @@ uint8_t sw_chatter(uint8_t sw, uint8_t *counter)
 }
 
 /**
- * @brief  スイチE��チェチE��
- * タイマ�E割り込みで呼ばれる
+ * @brief  スイッチチェック
+ * タイマー割り込みで呼ばれる
  */
 void sw_check()
 {
@@ -1113,7 +1113,7 @@ void sw_check()
 }
 
 //****************************
-// スイチE��を操作したら靁E
+// スイッチを操作したら呼ぶ
 //  メモリ再生の停止用
 // ****************************
 uint8_t sw_is_pressed()
@@ -1123,7 +1123,7 @@ uint8_t sw_is_pressed()
         return (0);
     }
 
-    // なんか押操作された�E�E
+    // なんか押し操作された
     if ((count_sw[0] > SW_PUSH_TH) || (count_sw[1] > SW_PUSH_TH) || (count_sw[2] > SW_PUSH_TH) || (count_sw[3] > SW_PUSH_TH))
     {
         return (1);
@@ -1132,14 +1132,14 @@ uint8_t sw_is_pressed()
 }
 
 /*****************************************************************************
- スイチE��状態読み込み　(8ビット�E惁E��を返す)
+ スイッチ状態読み込み　(8ビット情報を返す)
  xxxxdcba
-            dcba sw[1,2,3,4] に対忁E
+            dcba sw[1,2,3,4] に対必要
             xxxx フラグ
-                0000 何もなぁE
-                0001 クリチE��
-                0010 長押ぁE
-                0100 ダブル押ぁE
+                0000 何もない
+                0001 クリック
+                0010 長押い
+                0100 ダブル押い
  ******************************************************************************/
 uint8_t sw_get_info()
 {
@@ -1148,11 +1148,11 @@ uint8_t sw_get_info()
 
     if (sw_mask != 0)
     {
-        // 1bitでもスイチE��マスクがかかってぁE��ら、押されてなぁE��とにする
+        // 1bitでもスイッチマスクがかかっていら、押されてないとにする
         return (0);
     }
 
-    // 褁E��押されてる！E
+    // 複数押されている！
     if (count_sw[0] > SW_PUSH_TH)
     {
         count += 1;
@@ -1179,7 +1179,7 @@ uint8_t sw_get_info()
     }
 
     flg = 0;
-    // なんか長押しされた�E�E
+    // なんか長押しされた
     if (count_sw[0] > SW_PRESS_TH)
     {
         flg |= SW_1;
@@ -1205,7 +1205,7 @@ uint8_t sw_get_info()
     flg = 0;
     if (sw_clicked != 0)
     {
-        // なんかクリチE��されてた！E
+        // なんかクリックされていた！
         flg = SW_INFO_CLICK | sw_clicked;
         sw_clicked = 0;
     }
@@ -1213,7 +1213,7 @@ uint8_t sw_get_info()
 }
 
 //==========================================
-// 編雁E��の次の斁E��E
+// 編集の次の文字へ
 //==========================================
 char next_char(char c)
 {
@@ -1222,7 +1222,7 @@ char next_char(char c)
 
     p++;  // 次へ
 
-    // 末尾なら�E頭へ
+    // 末尾なら先頭へ
     if (*p == '\0')
         return edit_table[0];
 
@@ -1232,7 +1232,7 @@ char next_char(char c)
 
 
 //==========================================
-// 編雁E��の前�E斁E��E
+// 編集の前の文字へ
 //==========================================
 char prev_char(char c)
 {
@@ -1250,7 +1250,7 @@ char prev_char(char c)
 
 
 //==========================================
-// 編雁E��にそれ以降�E斁E��を削除
+// 編集のそれ以降の文字を削除
 //==========================================
 // void edit_clear_after_cursor(void)
 // {
@@ -1262,7 +1262,7 @@ char prev_char(char c)
 // }
 
 //==========================================
-// 編雁E��の表示を調整
+// 編集の表示を調整
 //==========================================
 void adjust_edit_view(void)
 {
@@ -1277,7 +1277,7 @@ void adjust_edit_view(void)
 }
 
 //==========================================
-// 汎用シスチE��メチE��ージ送信開姁E
+// 汎用システムメッセージ送信開始
 //==========================================
 void play_sys_msg(const char *msg, uint8_t wpm_val)
 {
@@ -1285,11 +1285,11 @@ void play_sys_msg(const char *msg, uint8_t wpm_val)
     sys_msg_active = true;
     last_activity_tick = tim1_tick256;
 
-    // シスチE��メチE��ージ用の固定WPMを設宁E
+    // システムメッセージ用の固定WPMを設定
     wpm_sys = wpm_val;
     key_spd_sys = 4687 / wpm_sys;
 
-    keyout_enabled = false; // RFキーイングしなぁE
+    keyout_enabled = false; // RFキーイングしない
     req_reset_auto = true;
     auto_mode = true;
     mode = MODE_PLAY;
@@ -1321,7 +1321,7 @@ bool read_straight_key(void)
 //==========================================
 static inline void cw_push(cw_event_t ev)
 {
-    // 再生中�E��E動送信�E�やPLAYモード中はチE��ード用バッファに入れなぁE
+    // 再生中（自動送信）やPLAYモード中はデコード用バッファに入れない
     if (auto_mode || mode == MODE_PLAY) return;
 
     uint8_t next = (cw_w + 1) % CW_BUF_SIZE;
@@ -1332,7 +1332,7 @@ static inline void cw_push(cw_event_t ev)
 }
 
 //==========================================
-//  モールス符号から斁E��へ変換
+//  モールス符号から文字へ変換
 //==========================================
 char morse_to_char(const char *m)
 {
@@ -1346,7 +1346,7 @@ char morse_to_char(const char *m)
 
 
 //==========================================
-//  ON確定時の処琁E
+//  ON確定時の処理
 //==========================================
 void process_on(uint32_t ticks)
 {
@@ -1367,7 +1367,7 @@ void process_on(uint32_t ticks)
 }
 
 //==========================================
-//  OFF確定時の処琁E
+//  OFF確定時の処理
 //==========================================
 void process_off(uint32_t ticks)
 {
@@ -1379,7 +1379,7 @@ void process_off(uint32_t ticks)
         return; 
     }
 
-    /* ==== 斁E��間 ==== */
+    /* ==== 文字間 ==== */
     if (ticks >= CHAR_GAP_MIN) {
         cw_push(EV_CHAR_GAP);
         //printf("[3] ticks=%lu  dit_est=%lu\r\n", ticks, dit_est);
@@ -1395,7 +1395,7 @@ void process_off(uint32_t ticks)
 
 
 //==========================================
-//  チE��ード�E琁E
+//  デコード処理
 //==========================================
 void cw_decode_task(void)
 {
@@ -1426,7 +1426,7 @@ void cw_decode_task(void)
 
         case EV_CHAR_GAP:
             if (morse_len > 0) {
-                morse_buf[morse_len] = '\0';   // 斁E���E匁E
+                morse_buf[morse_len] = '\0';   // 文字列化
                 char c = morse_to_char(morse_buf);
                 if (mode != MODE_PLAY && !auto_mode) {
                     printAscii(c); // LCD表示
@@ -1447,7 +1447,7 @@ void cw_decode_task(void)
                 morse_len = 0;
             }
             if (mode != MODE_PLAY && !auto_mode) {
-                printAscii(32); // スペ�Eス表示
+                printAscii(32); // スペース表示
             }
             break;
 
@@ -1459,7 +1459,7 @@ void cw_decode_task(void)
 
 
 //==========================================
-//  KEY出力�E琁E割り込みから呼ぶこと)
+//  KEY出力処理（割り込みから呼ぶこと）
 //==========================================
 void service_keyer(void)
 {
@@ -1473,21 +1473,21 @@ void service_keyer(void)
 else if (mode == MODE_KEYER)
 {
     bool st = read_straight_key();  // 電鍵
-    bool pd = job_paddle();         // パドル�E�状態機械�E�E
+    bool pd = job_paddle();         // パドルの状態機械
     on = st || pd;
 
-    // ☁Eストレートキーでスリープ復帰
+    // ※ストレートキーでスリープ復帰
     if (st) {
         last_activity_tick = tim1_tick256;
 
-        // ☁Eメモリ再生中なら強制停止
+        // ※メモリ再生中なら強制停止
         if (mode == MODE_PLAY || auto_mode) {
             stop_play();
         }
     }
 }
 
-    /* tickカウント（唯一の場所�E�E*/
+    /* tickカウント（唯一の場所）*/
     if (on) {
         last_activity_tick = tim1_tick256;
         key_on_ticks++;
@@ -1495,10 +1495,10 @@ else if (mode == MODE_KEYER)
         key_off_ticks++;
     }
 
-    /* 状態変化検�E */
+    /* 状態変化検知 */
     if (on && !prev_on)
     {
-        // OFF ↁEON
+        // OFF →ON
         process_off(key_off_ticks);        
 
         key_off_ticks = 0;
@@ -1507,7 +1507,7 @@ else if (mode == MODE_KEYER)
     }
     else if (!on && prev_on)
     {
-        // ON ↁEOFF
+        // ON →OFF
         process_on(key_on_ticks);
 
         key_on_ticks = 0;
@@ -1520,12 +1520,12 @@ else if (mode == MODE_KEYER)
 
 
 //==========================================
-//  #1 KEYERモード�E琁E
+//  #1 KEYERモード処理
 //==========================================
 void handle_keyer_mode(void)
 {
 
-    /* パドル入力無視フラグをクリア�E�パドルが両方離されたら�E�E*/
+    /* パドル入力無視フラグをクリア（パドルが両方離されたら）*/
     bool dot = !GPIO_digitalRead(PIN_DOT);
     bool dash = !GPIO_digitalRead(PIN_DASH);
     if (ignore_paddle_input && !dot && !dash)
@@ -1533,10 +1533,10 @@ void handle_keyer_mode(void)
         ignore_paddle_input = false;
     }
 
-    // スイチE��状態取征E
+    // スイッチ状態取取得
     update_switch_status();
 
-    /* 編雁E��ードへ */
+    /* 編集モードへ */
     //update_switch_status();
 
     if (sw_mode == SW_INFO_DOUBLE && (sw_stat & (SW_1 | SW_2)) == (SW_1 | SW_2)) 
@@ -1582,14 +1582,14 @@ void handle_keyer_mode(void)
 }
 
 //==========================================
-//  #2 PLAYモード（�E動リピ�Eト防止�E�E
+//  #2 PLAYモード（自動リピート防止）
 //==========================================
 void handle_play_mode(void)
 {
     // パドル入力を直接読み込み
     bool dot = !GPIO_digitalRead(PIN_DOT);
     bool dash = !GPIO_digitalRead(PIN_DASH);
-    bool st = read_straight_key();   // ☁Eストレートキー追加
+    bool st = read_straight_key();   // ※ストレートキー追加
 
     //パドル無視フラグがONで、パドルが両方離されたらフラグをクリア
     if (ignore_paddle_input && !dot && !dash)
@@ -1611,11 +1611,11 @@ void handle_play_mode(void)
     if (!auto_mode)
     {
         //printf("Finished Message\r\n");
-        // ☁Eここで stop_play() を呼ぶのが重要E��E
+        // ※ここで stop_play() を呼ぶのが重要
         stop_play();
         mode = MODE_KEYER;
         last_activity_tick = tim1_tick256;
-        // ☁E追加�E�メモリ再生終亁E��にタイムアウト関連をリセチE��
+        // ※追加：メモリ再生終了時にタイムアウト関連をリセット
         flush_done = true;
         key_off_ticks = 0;
         key_on_ticks = 0;
@@ -1623,11 +1623,11 @@ void handle_play_mode(void)
 }
 
 //==========================================
-//  #3 編雁E��ード�E琁E��メモリ選抁E
+//  #3 編集モード処理：メモリ選択
 //==========================================
 void handle_edit_select(void)
 {
-    // スイチE��状態取征E
+    // スイッチ状態取取得
     update_switch_status();
 
 
@@ -1638,7 +1638,7 @@ void handle_edit_select(void)
         if (sw_stat & SW_3) cur_msg = 2;
         if (sw_stat & SW_4) cur_msg = 3;
 
-        // 編雁E��姁E
+        // 編集開始
         edit_pos = 0;
         edit_len = strlen(msgs[cur_msg]);
 
@@ -1660,11 +1660,11 @@ void handle_edit_select(void)
 }
 
 //==========================================
-//  #4 編雁E��ード�E琁E��文字選抁E
+//  #4 編集モード処理：文字選択
 //==========================================
 void handle_edit_mode(void)
 {
-    // 編雁E�E回描画
+    // 編集：毎回描画
     if (edit_first)
     {
         draw_edit_screen();
@@ -1673,21 +1673,21 @@ void handle_edit_mode(void)
         edit_dash_prev = false;
     }
 
-    // スイチE��状態取征E
+    // スイッチ状態取取得
     update_switch_status();
 
     bool dot = !GPIO_digitalRead(PIN_DOT);
     bool dash = !GPIO_digitalRead(PIN_DASH);
 
-    /* ===== 10ms周期でのみ編雁E�E琁E===== */
+    /* ===== 10ms周期でのみ編集処理 ===== */
     if (edit_tick_10ms)
     {
         edit_tick_10ms = false;
 
-        /* ---- DOT�E�戻る！E--- */
+        /* ---- DOT：戻る！ --- */
         if (dot)
         {
-            // 新規押下（前フレームが靟で今フレームが押されてぁE���E��E 即座に反映
+            // 新規押下（前フレームが前で今フレームが押されている） 即座に反映
             if (!edit_dot_prev)
             {
                 msgs[cur_msg][edit_pos] =
@@ -1697,7 +1697,7 @@ void handle_edit_mode(void)
             }
             else
             {
-                // 押し続け ↁEリピ�Eト壣亁E
+                // 押し続け →リピート開始
                 edit_dot_cnt++;
                 if (edit_dot_cnt == EDIT_REPEAT_START ||
                     (edit_dot_cnt > EDIT_REPEAT_START &&
@@ -1717,10 +1717,10 @@ void handle_edit_mode(void)
             edit_dot_prev = false;
         }
 
-        /* ---- DASH�E�進む�E�E--- */
+        /* ---- DASH：進む --- */
         if (dash)
         {
-            // 新規押下（前フレームが靟で今フレームが押されてぁE���E��E 即座に反映
+            // 新規押下（前フレームが前で今フレームが押されている） 即座に反映
             if (!edit_dash_prev)
             {
                 msgs[cur_msg][edit_pos] =
@@ -1730,7 +1730,7 @@ void handle_edit_mode(void)
             }
             else
             {
-                // 押し続け ↁEリピ�Eト壣亁E
+                // 押し続け →リピート開始
                 edit_dash_cnt++;
                 if (edit_dash_cnt == EDIT_REPEAT_START ||
                     (edit_dash_cnt > EDIT_REPEAT_START &&
@@ -1751,9 +1751,9 @@ void handle_edit_mode(void)
         }
     }
 
-    /* ===== 以下�E従来どおり�E�即時反応でOK�E�E===== */
+    /* ===== 以下は従来どおり・即時反応でOK ===== */
 
-    // ☁ESW4 長押ぁEↁE保存して終亁E
+    // ※SW4 長押い→保存して終了
     if (sw_mode == SW_INFO_PRESS && sw_stat == SW_4)
     {
         SW_CLEAR();
@@ -1766,7 +1766,7 @@ void handle_edit_mode(void)
         return;
     }
 
-    // ☁ESW1 長押ぁEↁEカーソル以降削除
+    // ※SW1 長押い→カーソル以降削除
     if (sw_mode == SW_INFO_PRESS && sw_stat == SW_1)
     {
         SW_CLEAR();
@@ -1777,21 +1777,21 @@ void handle_edit_mode(void)
         return;
     }
 
-        // ☁ESW1 ↁE前�E斁E��E
+        // ※SW1 →前の文字へ
     if (sw_mode == SW_INFO_CLICK && (sw_stat & SW_1)) {
         msgs[cur_msg][edit_pos] = prev_char(msgs[cur_msg][edit_pos]);
         draw_edit_screen();
         return;
     }
 
-    // ☁ESW2 ↁE次の斁E��E
+    // ※SW2 →次の文字へ
     if (sw_mode == SW_INFO_CLICK && (sw_stat & SW_2)) {
         msgs[cur_msg][edit_pos] = next_char(msgs[cur_msg][edit_pos]);
         draw_edit_screen();
         return;
     }
 
-    // ☁ESW4 ↁEカーソル進む
+    // ※SW4 →カーソル進む
     if (sw_mode == SW_INFO_CLICK && sw_stat == SW_4)
     {
         SW_CLEAR();
@@ -1809,7 +1809,7 @@ void handle_edit_mode(void)
         draw_edit_screen();
     }
 
-    // ☁ESW3 ↁEカーソル戻ぁE
+    // ※SW3 →カーソル戻い
     if (sw_mode == SW_INFO_CLICK && sw_stat == SW_3 && edit_pos > 0)
     {
         SW_CLEAR();
@@ -1820,11 +1820,11 @@ void handle_edit_mode(void)
 }
 
 //==========================================
-//  #6 設定モーチE
+//  #6 設定モード
 //==========================================
 void handle_setup_mode(void)
 {
-    //TODO: 封E��の拡張用
+    //TODO: 将来の拡張用
 }
 
 //==========================================
@@ -1846,7 +1846,7 @@ void draw_startup_screen(void)
 
 void draw_keyer_screen(void)
 {
-    ssd1306_setbuf(0); // 0=黁E 1=白
+    ssd1306_setbuf(0); // 0=黒, 1=白
     ssd1306_drawstr_sz(0, 0, "KEYER", 1, fontsize_8x8);
     ssd1306_drawstr_sz(64, 0, "WPM:", 1, fontsize_8x8);
     draw_wpm_value();
@@ -1858,7 +1858,7 @@ void draw_keyer_screen(void)
 //==========================================
 void draw_edit_select(void)
 {
-    ssd1306_setbuf(0); // 0=黁E 1=白
+    ssd1306_setbuf(0); // 0=黒, 1=白
     ssd1306_drawstr_sz(0, 0, "EDIT MSG", 1, fontsize_8x8);
     ssd1306_drawFastHLine(0, 10, 128, 1);
     ssd1306_drawstr(0, 16, "F1-F4:SELECT MSG", 1);
@@ -1877,7 +1877,7 @@ void draw_edit_select(void)
 }
 
 //==========================================
-//  #4 メモリー編雁E
+//  #4 メモリー編集
 //==========================================
 void draw_edit_screen(void)
 {
@@ -1904,10 +1904,10 @@ void draw_edit_screen(void)
 
     ssd1306_drawFastHLine(0, 10, 128, 1);
 
-/* ===== メチE��ージ表示用フォント幁E��義 ===== */
+/* ===== メッセージ表示用フォント幅の定義 ===== */
 #define EDIT_FONT_W 12
 
-    /* ===== メチE��ージ表示�E�E斁E��ウィンドウ�E�E==== */
+    /* ===== メッセージ表示用文字ウィンドウ ===== */
     for (uint8_t i = 0; i < DISP_COLS; i++)
     {
         uint8_t idx = edit_view_left + i;
@@ -1922,10 +1922,10 @@ void draw_edit_screen(void)
     if (cursor_col >= DISP_COLS)
         cursor_col = DISP_COLS - 1;
 
-    int x = cursor_col * EDIT_FONT_W+EDIT_FONT_W/2 - 4; // カーソルを文字�E中央に配置
+    int x = cursor_col * EDIT_FONT_W+EDIT_FONT_W/2 - 4; // カーソルを文字の中央に配置
     ssd1306_drawchar_sz(x, 32, '^', 1, fontsize_8x8);
 
-    /* ===== 操作説昁E===== */
+    /* ===== 操作説明 ===== */
 
     ssd1306_fillRect(3, 40, 27, 8, 1);
     ssd1306_fillRect(35, 40, 27, 8, 1);
@@ -1936,10 +1936,10 @@ void draw_edit_screen(void)
     const char arrow_down[]  = { 0x01, '\0' };
     const char arrow_left[]  = { 0x02, '\0' };
     const char arrow_right[] = { 0x03, '\0' };
-    ssd1306_drawstr_sz(12, 40, (char*)arrow_up, 0, fontsize_8x8);  // 0はスペ�Eス�E��E�E�表示
-    ssd1306_drawstr_sz(44, 40, (char*)arrow_down, 0, fontsize_8x8);  // 1はスペ�Eス�E��E�E�表示
-    ssd1306_drawstr_sz(76, 40, (char*)arrow_left, 0, fontsize_8x8);  // 2はスペ�Eス�E��E�E�表示
-    ssd1306_drawstr_sz(108, 40, (char*)arrow_right, 0, fontsize_8x8); // 3はスペ�Eス�E��E�E�表示
+    ssd1306_drawstr_sz(12, 40, (char*)arrow_up, 0, fontsize_8x8);  // 0はスペース文字を表示
+    ssd1306_drawstr_sz(44, 40, (char*)arrow_down, 0, fontsize_8x8);  // 1はスペース文字を表示
+    ssd1306_drawstr_sz(76, 40, (char*)arrow_left, 0, fontsize_8x8);  // 2はスペース文字を表示
+    ssd1306_drawstr_sz(108, 40, (char*)arrow_right, 0, fontsize_8x8); // 3はスペース文字を表示
 
     ssd1306_drawstr_sz(3, 48, "Press >1sec", 1, fontsize_8x8);
     ssd1306_fillRect(3, 56, 27, 8, 1);
@@ -1955,27 +1955,27 @@ void draw_edit_screen(void)
 
 
 //==========================================
-//  タイマ�E割り込み
+//  タイマー割り込み
 //==========================================
 void TIM1_UP_IRQHandler(void)
 {
     /* 割り込みフラグクリア */
     TIM1->INTFR &= (uint16_t)~TIM_IT_Update;
 
-    /* キー処琁E��ここで1回だけ！E*/
+    /* キー処理ここで1回だけ！ */
     service_keyer();
 
-    /* スイチE��処琁E��刁E�� */
+    /* スイッチ処理分周 */
     if (++sw_div_cnt >= SW_SCAN_DIV)
     {
         sw_div_cnt = 0;
         sw_check();
     }
 
-    /* IRQ tick�E�デバッグ用ならOK�E�E*/
+    /* IRQ tick（デバッグ用ならOK）*/
     tim1_tick256++;
 
-    /* ト�Eン制御 */
+    /* トーン制御 */
     if (tone_on)
     {
         if (++tone_div >= TONE_DIV)
@@ -1991,7 +1991,7 @@ void TIM1_UP_IRQHandler(void)
 }
 
 //==========================================
-//  スタンバイモードへ入めE
+//  スタンバイモードへ入る
 //==========================================
 void enter_standby(void)
 {
@@ -2015,8 +2015,8 @@ void enter_standby(void)
     ADC1->CTLR1 = 0;
     ADC1->CTLR2 = 0;
 
-    // --- OLED OFF�E�最重要E��E---
-    ssd1306_cmd(SSD1306_DISPLAYOFF);   // あなた�ESSD1306ライブラリに合わせて
+    // --- OLED OFF（最重要）---
+    ssd1306_cmd(SSD1306_DISPLAYOFF);   // あなたのSSD1306ライブラリに合わせて
     I2C1->CTLR1 &= ~I2C_CTLR1_PE;
 
     prepare_gpio_for_standby();
@@ -2024,7 +2024,7 @@ void enter_standby(void)
     RCC->APB1PCENR &= ~(RCC_APB1Periph_I2C1 | RCC_APB1Periph_TIM2);
     RCC->APB2PCENR &= ~(RCC_APB2Periph_ADC1 | RCC_APB2Periph_TIM1 | RCC_APB2Periph_USART1);
 
-    // --- PWR クロチE��有効匁E---
+    // --- PWR クロック有効化 ---
     RCC->APB1PCENR |= RCC_APB1Periph_PWR;
     RCC->APB2PCENR |= RCC_APB2Periph_AFIO;
 
@@ -2045,40 +2045,40 @@ void enter_standby(void)
 
     NVIC->SCTLR |= (1 << 2);
 
-    // --- Standby モード選抁E---
+    // --- Standby モード選択 ---
     PWR->CTLR |= PWR_CTLR_PDDS;
 
-    // --- 復帰イベント設定！EW1〜SW4, DOT, DASH, ST�E�E---
+    // --- 復帰イベント設定！ SW1〜SW4, DOT, DASH, ST ---
     // 例：PA1, PA2, PA3, PA4, PC1, PC2, PC3 など
     // --- Standby へ ---
-    __WFE();   // ↁEIRQ ではなぁEEVT で復帰
+    __WFE();   // →IRQ ではないEVT で復帰
     restore_after_standby();
 }
 
 //==========================================
-//  ループ�E琁E
+//  ループ処理
 //==========================================
 void loop(void)
 {
-    //oled_refreshed_this_frame = false;   // ☁Eフレーム開姁E
+    //oled_refreshed_this_frame = false;   // ※フレーム開始
     static uint16_t sec_cnt = 0;
     static uint32_t last_tick = 0;
 
-    /* ==== 10ms周朁E(IRQ基溁E 256us ÁE40 ≁E10ms) ==== */
+    /* ==== 10ms周期(IRQ基準: 256us ×40 ≒10ms) ==== */
     if ((tim1_tick256 - last_tick) >= 40)
     {
         last_tick += 40; // advance by 40 ticks
         edit_tick_10ms = true;
 
-        /* ==== EDIT中以外�EWPM更新 ==== */
+        /* ==== EDIT中以外のWPM更新 ==== */
         if (mode != MODE_EDIT)
         {
             update_speed_from_adc();
         }
 
-        /* ==== 1秒周朁E==== */
+        /* ==== 1秒周有==== */
         if (++sec_cnt >= 100)
-        { // 100 ÁE10ms = 1s
+        { // 100 ×10ms = 1s
             sec_cnt = 0;
 #if DEBUG_MODE_PRINT
             //printf("[MODE] %s\r\n", mode_to_str(mode));
@@ -2086,7 +2086,7 @@ void loop(void)
         }
     }
 
-    /* ==== モード�E琁E==== */
+    /* ==== モード処理 ==== */
     switch (mode)
     {
     case MODE_KEYER:
@@ -2108,8 +2108,8 @@ void loop(void)
 
     cw_decode_task();
 
-    // ==== 無音タイムアウト（最後�E斁E��確定用�E�E====
-    // ☁Eメモリ再生中は自動デコード確定を無効匁E
+    // ==== 無音タイムアウト（最後の文字確定用） ====
+    // ※メモリ再生中は自動デコード確定を無効化
     if (!key_state && !flush_done && !auto_mode) {
 
         if (key_off_ticks >= WORD_GAP_MIN) {
@@ -2122,32 +2122,32 @@ void loop(void)
         flush_done = false;
     }
 
-    // ☁Eフレームの最後に refresh めE回だぁE
+    // ※フレームの最後に refresh を毎回する
     //ssd1306_refresh();
 
-    // ☁E無操佁E0秒でスリーチE
+    // ※無操作10秒でスリープ
     uint32_t now = tim1_tick256;
     if (!key_state &&
         !auto_mode &&
         mode != MODE_PLAY &&
         mode != MODE_EDIT_SELECT &&
         mode != MODE_EDIT &&
-        (now - last_activity_tick) > 39062)   // 10私E
+        (now - last_activity_tick) > 39062)   // 10秒
     {
 
-        standby_magic = STANDBY_MAGIC_VALUE;   // ☁E復帰フラグ
+        standby_magic = STANDBY_MAGIC_VALUE;   // ※復帰フラグ
         enter_standby();
         // // OLED OFF
         // ssd1306_cmd(SSD1306_DISPLAYOFF);
 
         // wake_flag = false;
 
-        // // ☁EWFI ループ（割り込みで wake_flag が立つ�E�E
+        // // ※WFI ループ（割り込みで wake_flag が立つ）
         // while (!wake_flag) {
         //     __WFI();
         // }
 
-        // // 復帰処琁E
+        // // 復帰処理
         // ssd1306_cmd(SSD1306_DISPLAYON);
         // ssd1306_refresh();
 
@@ -2157,7 +2157,7 @@ void loop(void)
 }
 
 /* ===============================
- * PLAY / SAVE 仮実裁E��ダミ�E�E�E
+ * PLAY / SAVE 仮実装 ダミー
  * =============================== */
 
 void start_play(uint8_t msg)
@@ -2165,16 +2165,16 @@ void start_play(uint8_t msg)
     cur_msg = msg;
     last_activity_tick = tim1_tick256;
 
-    auto_msg = msgs[msg]; // ☁E追加�E��E生する文字�Eを指宁E
+    auto_msg = msgs[msg]; // ※追加：生成する文字列を指定
     sys_msg_active = false;
     keyout_enabled = true;
 
-    // 再生開始時に未確定データめE��イマをクリアして、前回�E残りで誤チE��ードされなぁE��ぁE��する
-    morse_len = 0;    // 未確定�Eモールス符号を破棁E
-    cw_r = cw_w;      // CWイベントバチE��ァをクリア
+    // 再生開始時に未確定データをクリアして、前回の残りで誤デコードされないようにする
+    morse_len = 0;    // 未確定のモールス符号を破棄
+    cw_r = cw_w;      // CWイベントバッファをクリア
     key_off_ticks = 0;
     key_on_ticks = 0;
-    flush_done = true; // 無音タイムアウト�E琁E��一時的に抑止
+    flush_done = true; // 無音タイムアウト処理を一時的に抑止
 
     auto_mode = true;
     req_reset_auto = true;
@@ -2184,18 +2184,18 @@ void start_play(uint8_t msg)
 void stop_play(void)
 {
     auto_mode = false;     // 自動送信OFF
-    req_reset_auto = true; // job_auto 冁E��状態を初期匁E
+    req_reset_auto = true; // job_auto の状態を初期化
 
-    // パドル入力を無視（停止操作が音声にならなぁE��ぁE��するため�E�E
+    // パドル入力を無視（停止操作が音声にならないようにするため）
     ignore_paddle_input = true;
 
-    // スイチE��マスクをセチE���E�停止操作�E入力を無視！E
+    // スイッチマスクをセット：停止操作の入力を無視！
     sw_mask = 1;
 
     // ===== 追加 =====
-    morse_len = 0;         // ↁE未確定文字を破棁E
+    morse_len = 0;         // →未確定文字を破棄
 
-    // ☁Eここで「次の1回�E忁E��描き直せ」と持E��
+    // ※ここで「次の1回は必要な描き直し」とマーク
     last_wpm = -999;
     update_speed_from_adc();
     ssd1306_refresh();
@@ -2208,15 +2208,15 @@ void stop_play(void)
 int main()
 {
 
-    // 初期化（最初に実行すめE
+    // 初期化（最初に実行する）
     SystemInit();
-    // RCC->APB1PCENR |= RCC_APB1Periph_PWR; // PWR クロチE��有効匁E
-    // bool from_standby = (PWR->CSR & PWR_CSR_SBF); // 復帰允E��スタンバイかどぁE��
+    // RCC->APB1PCENR |= RCC_APB1Periph_PWR; // PWR クロック有効化
+    // bool from_standby = (PWR->CSR & PWR_CSR_SBF); // 復帰元がスタンバイかどうか
     // PWR->CTLR |= PWR_CTLR_CWUF | PWR_CTLR_CSBF; // 復帰フラグクリア
     ssd1306_i2c_init();
     ssd1306_init();
     //ssd1306_cmd(SSD1306_DISPLAYOFF);
-    //__WFI(); // 割り込み征E��
+    //__WFI(); // 割り込み取得
     GPIO_setup(); // gpio Setup;
     GPIO_ADCinit();
     tim1_int_init(); //
@@ -2225,22 +2225,22 @@ int main()
 
     bool resumed_from_standby = (standby_magic == STANDBY_MAGIC_VALUE);
 
-    //スタンバイからの復帰かどぁE��を判宁E
+    //スタンバイからの復帰かどうかを判定
     if (resumed_from_standby) {
-        standby_magic = 0;  // 次回�Eためにクリア
+        standby_magic = 0;  // 次回のためにクリア
         reset_decoded_display();
 
-        // スタンバイ復帰時�EOLEDをリセチE��して完�Eにクリアしてから再描画
+        // スタンバイ復帰時：OLEDをリセットして完全にクリアしてから再描画
         ssd1306_cmd(SSD1306_DISPLAYOFF);
         ssd1306_init();
-        for (int i = 0; i < 4; i++) {     // 褁E��回クリアして確実に初期匁E
+        for (int i = 0; i < 4; i++) {     // 複数回クリアして確実に初期化
             ssd1306_setbuf(0);
             ssd1306_refresh();
         }
         draw_keyer_screen();
     }
     else {
-        // 通常起動時はフラグを�E期化
+        // 通常起動時はフラグを初期化
         standby_magic = 0;
 
         reset_decoded_display();
@@ -2251,11 +2251,11 @@ int main()
         Delay_Ms(1000);
         draw_keyer_screen(); // キーヤー画面
     }
-    // ☁E起動直後に WPM を強制描画して refresh
+    // ※起動直後に WPM を強制描画して refresh
     update_speed_from_adc();
     ssd1306_refresh();
 
-    // ループ�E琁E
+    // ループ処理
     while (1)
     {
         loop();
