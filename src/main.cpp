@@ -1030,7 +1030,7 @@ void update_speed_from_adc()
 {
 
     int adc = GPIO_analogRead(GPIO_Ain0_A2);
-    wpm = map(adc, 0, 1023, WPM_MIN, WPM_MAX);
+    wpm = map(adc, 0, 1023, WPM_MAX, WPM_MIN);
     dit_est = (1200UL * 1000)/(wpm * 256);
     key_spd = dit_est;
 
