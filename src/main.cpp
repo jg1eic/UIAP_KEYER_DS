@@ -1979,8 +1979,8 @@ void draw_edit_screen(void)
 
     const char arrow_up[]    = { 0x04, '\0' };
     const char arrow_down[]  = { 0x01, '\0' };
-    const char arrow_left[]  = { 0x02, '\0' };
-    const char arrow_right[] = { 0x03, '\0' };
+    const char arrow_right[]  = { 0x02, '\0' };
+    const char arrow_left[] = { 0x03, '\0' };
     ssd1306_drawstr_sz(12, 40, (char*)arrow_up, 0, fontsize_8x8);  // 0はスペース文字を表示
     ssd1306_drawstr_sz(44, 40, (char*)arrow_down, 0, fontsize_8x8);  // 1はスペース文字を表示
     ssd1306_drawstr_sz(76, 40, (char*)arrow_left, 0, fontsize_8x8);  // 2はスペース文字を表示
