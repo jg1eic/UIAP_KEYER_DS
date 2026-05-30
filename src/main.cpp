@@ -2264,18 +2264,13 @@ int main()
     //__WFI(); // 割り込み取得
     GPIO_setup(); // gpio Setup;
     GPIO_ADCinit();
-    tim1_int_init(); //
-    init_flash_messages();
-    // tim2_pwm_init();             // TIM2 PWM Setup
 
+    // ssd1306_refreshはTIM1割り込みを一時無効化するため、スタンバイ復帰時のOLED再初期化を
+    // tim1_int_init()より前に完了させる（復帰パドルの最初の長短点が正確になる）
     bool resumed_from_standby = (standby_magic == STANDBY_MAGIC_VALUE);
-
-    //スタンバイからの復帰かどうかを判定
     if (resumed_from_standby) {
         standby_magic = 0;  // 次回のためにクリア
         reset_decoded_display();
-
-        // スタンバイ復帰時：OLEDをリセットして完全にクリアしてから再描画
         ssd1306_cmd(SSD1306_DISPLAYOFF);
         ssd1306_init();
         for (int i = 0; i < 4; i++) {     // 複数回クリアして確実に初期化
@@ -2283,22 +2278,34 @@ int main()
             ssd1306_refresh();
         }
         draw_keyer_screen();
+        update_speed_from_adc();  // WPM描画・リフレッシュもTIM1開始前に完了
+        ssd1306_refresh();
     }
-    else {
+
+    // タイマー開始前にkey_spdをADCから正しく設定する（通常起動時も含む）
+    {
+        int adc = GPIO_analogRead(GPIO_Ain0_A2);
+        wpm = map(adc, 0, 1023, WPM_MAX, WPM_MIN);
+        dit_est = (1200UL * 1000) / (wpm * 256);
+        key_spd = dit_est;
+    }
+    tim1_int_init(); //
+    init_flash_messages();
+    // tim2_pwm_init();             // TIM2 PWM Setup
+
+    if (!resumed_from_standby) {
         // 通常起動時はフラグを初期化
         standby_magic = 0;
-
         reset_decoded_display();
-
         Delay_Ms(1000);
         draw_startup_screen(); // スタート画面
         play_sys_msg("OK", 20);
         Delay_Ms(1000);
         draw_keyer_screen(); // キーヤー画面
+        // ※起動直後に WPM を強制描画して refresh
+        update_speed_from_adc();
+        ssd1306_refresh();
     }
-    // ※起動直後に WPM を強制描画して refresh
-    update_speed_from_adc();
-    ssd1306_refresh();
 
     // ループ処理
     while (1)
