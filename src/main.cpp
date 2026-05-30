@@ -1835,7 +1835,7 @@ void handle_edit_mode(void)
     if (sw_mode == SW_INFO_CLICK && sw_stat == SW_4)
     {
         SW_CLEAR();
-        if (edit_pos < MSG_LEN - 1)
+        if (edit_pos < MSG_LEN - 2)
         {
             edit_pos++;
             if (edit_pos >= edit_len)
