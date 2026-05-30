@@ -188,8 +188,6 @@ const uint8_t expand[16] =
 void ssd1306_refresh(void)
 {
     uint16_t i;
-    uint16_t tim1_inten = TIM1->DMAINTENR;
-    TIM1->DMAINTENR &= (uint16_t)~TIM_IT_Update;
     
 #ifdef SH1107
 
@@ -248,8 +246,6 @@ void ssd1306_refresh(void)
     }
 #endif
 #endif
-
-    TIM1->DMAINTENR = tim1_inten;
 }
 
 /*

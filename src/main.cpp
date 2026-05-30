@@ -247,6 +247,7 @@ volatile uint8_t cw_r = 0;
 
 //モールス文字バッファ
 volatile bool flush_done = false;
+volatile bool oled_dirty = false;  // OLEDリフレッシュ要求フラグ
 
 //モールス符号バッファ
 #define MORSE_BUF_LEN 8
@@ -534,15 +535,9 @@ static void printAsc(int8_t asciinumber)
     // 行 に新しい文字を追加
     line3[lcdindex++] = asciinumber;
 
-    // ※行全体を描画（部分描画はしない）
-    redraw_lines();
-
-    // ※refresh は毎回（乱れ防止）
-    //    __disable_irq();
-    ssd1306_refresh();
-    // oled_refreshed_this_frame = true;
-    //__enable_irq();
-    //oled_refreshed_this_frame = true;
+    // redraw_lines/refreshはTIM1ハンドラ内で行うと13ms以上かかりギャップが伸びるため
+    // メインループで実行する（oled_dirtyフラグで通知）
+    oled_dirty = true;
 }
 
 
@@ -915,12 +910,12 @@ uint8_t job_auto(void)
                             pos++;
                         }
                         state = AUTO_WORD_GAP;
-                        half_rem = 14; // 7 dit
+                        half_rem = 11; // ELEM_OFF(2) + WORD_GAP(11) + AUTO_IDLE(1) = 14 half-dit = 7dit
                     } else {
                         // 次も文字→文字間ギャップ
                         pos++; // 次の文字へ
                         state = AUTO_CHAR_GAP;
-                        half_rem = 6; // 3 dit
+                        half_rem = 3; // ELEM_OFF(2) + CHAR_GAP(3) + AUTO_IDLE(1) = 6 half-dit = 3dit
                     }
                 } else {
                     // まだ要素が残ってい →次の要素 ON
@@ -2167,8 +2162,13 @@ void loop(void)
         flush_done = false;
     }
 
-    // ※フレームの最後に refresh を毎回する
-    //ssd1306_refresh();
+    // 再生中はキーON中のみ描画+リフレッシュ（ギャップ中はTIM1が正常に動くよう行わない）
+    // 再生中以外は常時実行
+    if (oled_dirty && (key_state || mode != MODE_PLAY)) {
+        oled_dirty = false;
+        redraw_lines();
+        ssd1306_refresh();
+    }
 
     // ※無操作10秒でスリープ
     uint32_t now = tim1_tick256;
