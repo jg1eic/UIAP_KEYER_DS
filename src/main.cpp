@@ -324,6 +324,7 @@ uint8_t job_paddle(void);
 uint8_t job_auto(void);
 void startTone(void);
 void stopTone(void);
+static void drawstr_6px(uint8_t x, uint8_t y, const char *str, uint8_t color);
 void update_speed_from_adc(void);
 uint16_t read_battery_mv(void);
 void update_battery_status(void);
@@ -1070,14 +1071,14 @@ static void draw_wpm_value(void)
     buf[1] = '0' + wpm % 10;
     buf[2] = 'W'; buf[3] = 'P'; buf[4] = 'M';
     buf[5] = '\0';
-    ssd1306_drawstr_sz(48, 0, buf, 1, fontsize_8x8);
+    drawstr_6px(48, 0, buf, 1);
 }
 
 static void draw_bat_value(void)
 {
     ssd1306_fillRect(100, 0, 28, 8, 0);
     if (bat_mv < 800) {
-        ssd1306_drawstr_sz(100, 0, "USB", 1, fontsize_8x8);
+        drawstr_6px(100, 0, "USB", 1);
     } else {
         uint16_t rounded = bat_mv + 50;
         ssd1306_drawchar_sz(100, 0, '0' + (rounded / 1000),       1, fontsize_8x8);
@@ -1711,7 +1712,7 @@ void handle_keyer_mode(void)
             repeat_msg_idx = rpt;
             // タイトルを "RPT" に更新
             ssd1306_fillRect(0, 0, 40, 8, 0);
-            ssd1306_drawstr_sz(0, 0, "RPT", 1, fontsize_8x8);
+            drawstr_6px(0, 0, "RPT", 1);
             ssd1306_refresh();
             start_play(rpt);  // play_mem_msgより完全な初期化
         }
@@ -1958,6 +1959,17 @@ void handle_edit_mode(void)
 }
 
 //==========================================
+//  6px送り文字列描画（8x8フォント、文字間を詰める）
+//==========================================
+static void drawstr_6px(uint8_t x, uint8_t y, const char *str, uint8_t color)
+{
+    while (*str) {
+        ssd1306_drawchar_sz(x, y, *str++, color, fontsize_8x8);
+        x += 6;
+    }
+}
+
+//==========================================
 //  #6 設定画面描画（5項目・スクロール対応）
 //==========================================
 void draw_setup_screen(void)
@@ -1977,23 +1989,23 @@ void draw_setup_screen(void)
     values[4] = stby_strs[standby_time_idx];
 
     ssd1306_setbuf(0);
-    ssd1306_drawstr_sz(0, 0, "SETUP", 1, fontsize_8x8);
+    drawstr_6px(0, 0, "SETUP", 1);
     ssd1306_drawFastHLine(0, 10, 128, 1);
 
     for (int i = 0; i < 3; i++) {
         int idx = setup_scroll + i;
         if (idx >= 5) break;
         int y = 14 + i * 14;
-        ssd1306_drawstr_sz(0,  y, (char*)(setup_cursor == idx ? ">" : " "), 1, fontsize_8x8);
-        ssd1306_drawstr_sz(10, y, (char*)labels[idx], 1, fontsize_8x8);
-        ssd1306_drawstr_sz(90, y, (char*)values[idx],  1, fontsize_8x8);
+        drawstr_6px(0,  y, (setup_cursor == idx ? ">" : " "), 1);
+        drawstr_6px(7,  y, labels[idx], 1);
+        drawstr_6px(74, y, values[idx],  1);
     }
 
     // スクロールインジケータ
     if (setup_scroll > 0)
-        ssd1306_drawstr_sz(122, 12, "^", 1, fontsize_8x8);
+        drawstr_6px(122, 12, "^", 1);
     if (setup_scroll + 3 < 5)
-        ssd1306_drawstr_sz(122, 40, "v", 1, fontsize_8x8);
+        drawstr_6px(122, 40, "v", 1);
 
     // ボタンガイド（F1:↑ F2:↓ F3:CHG F4:SAV）
     ssd1306_fillRect(3,  56, 27, 8, 1);
@@ -2003,10 +2015,10 @@ void draw_setup_screen(void)
 
     const char arrow_up[]   = { 0x04, '\0' };
     const char arrow_down[] = { 0x01, '\0' };
-    ssd1306_drawstr_sz(12,  56, (char*)arrow_up,   0, fontsize_8x8);
-    ssd1306_drawstr_sz(44,  56, (char*)arrow_down, 0, fontsize_8x8);
-    ssd1306_drawstr_sz(71,  56, "CHG", 0, fontsize_8x8);
-    ssd1306_drawstr_sz(100, 56, "SAV", 0, fontsize_8x8);
+    drawstr_6px(13,  56, (const char*)arrow_up,   0);
+    drawstr_6px(45,  56, (const char*)arrow_down, 0);
+    drawstr_6px(72,  56, "CHG", 0);
+    drawstr_6px(102, 56, "SAV", 0);
 
     ssd1306_refresh();
 }
@@ -2082,24 +2094,11 @@ void draw_startup_screen(void)
 {
     update_battery_status();
 
-    char bat_str[6];
-    if (bat_mv < 800) {
-        bat_str[0]=' '; bat_str[1]='U'; bat_str[2]='S'; bat_str[3]='B'; bat_str[4]='\0';
-    } else {
-        uint16_t rounded = bat_mv + 50; // 0.1V単位で四捨五入
-        bat_str[0] = '0' + (rounded / 1000);
-        bat_str[1] = '.';
-        bat_str[2] = '0' + ((rounded % 1000) / 100);
-        bat_str[3] = 'V';
-        bat_str[4] = '\0';
-    }
-
     ssd1306_drawstr_sz(0, 10, "KEYER DS", 1, fontsize_16x16);
-    ssd1306_drawstr_sz(0, 30, "Powered by", 1, fontsize_8x8);
-    ssd1306_drawstr_sz(40, 40, "UIAPduino", 1, fontsize_8x8);
+    drawstr_6px(0, 30, "Powered by", 1);
+    drawstr_6px(40, 40, "UIAPduino", 1);
     ssd1306_drawFastHLine(0, 50, 128, 1);
-    ssd1306_drawstr_sz(0, 52, "Version 0.2", 1, fontsize_8x8);
-    ssd1306_drawstr_sz(72, 52, bat_str, 1, fontsize_8x8);
+    drawstr_6px(0, 52, "Version 0.2", 1);
     ssd1306_refresh();
 }
 
@@ -2110,7 +2109,7 @@ void draw_startup_screen(void)
 void draw_keyer_screen(void)
 {
     ssd1306_setbuf(0); // 0=黒, 1=白
-    ssd1306_drawstr_sz(0, 0, "KEYER", 1, fontsize_8x8);
+    drawstr_6px(0, 0, "KEYER", 1);
     draw_wpm_value();
     draw_bat_value();
     ssd1306_drawFastHLine(0, 10, 128, 1);
@@ -2122,10 +2121,10 @@ void draw_keyer_screen(void)
 void draw_edit_select(void)
 {
     ssd1306_setbuf(0); // 0=黒, 1=白
-    ssd1306_drawstr_sz(0, 0, "EDIT MSG", 1, fontsize_8x8);
+    drawstr_6px(0, 0, "EDIT MSG", 1);
     ssd1306_drawFastHLine(0, 10, 128, 1);
-    ssd1306_drawstr(0, 16, "F1-F4:SELECT MSG", 1);
-    ssd1306_drawstr(0, 25, "F1+F2:Return", 1);    
+    drawstr_6px(0, 16, "F1-F4:SELECT MSG", 1);
+    drawstr_6px(0, 25, "F1+F2:Return", 1);
     ssd1306_fillRect(3, 48, 27, 16, 1);
     ssd1306_fillRect(35, 48, 27, 16, 1);
     ssd1306_fillRect(67, 48, 27, 16, 1);
@@ -2146,12 +2145,17 @@ void draw_edit_screen(void)
 {
     char buf[32];
 
+    if (edit_pos >= edit_len && msgs[cur_msg][edit_pos] != '\0') {
+        edit_len = edit_pos + 1;
+        msgs[cur_msg][edit_len] = '\0';
+    }
+
     ssd1306_setbuf(0);
 
     /* ===== タイトル ===== */
     buf[0]='E'; buf[1]='D'; buf[2]='I'; buf[3]='T'; buf[4]=' ';
     buf[5]='M'; buf[6]='S'; buf[7]='G'; buf[8]='0'+(cur_msg+1); buf[9]='\0';
-    ssd1306_drawstr_sz(0, 0, buf, 1, fontsize_8x8);
+    drawstr_6px(0, 0, buf, 1);
 
     /* ===== カーソル位置表示 (XX/63) ===== */
     {
@@ -2163,7 +2167,7 @@ void draw_edit_screen(void)
         buf[4] = '0' + (MSG_LEN - 1) % 10;
         buf[5] = '\0';
     }
-    ssd1306_drawstr_sz(80, 0, buf, 1, fontsize_8x8);
+    drawstr_6px(80, 0, buf, 1);
 
     ssd1306_drawFastHLine(0, 10, 128, 1);
 
@@ -2190,28 +2194,28 @@ void draw_edit_screen(void)
 
     /* ===== 操作説明 ===== */
 
-    ssd1306_fillRect(3, 40, 27, 8, 1);
-    ssd1306_fillRect(35, 40, 27, 8, 1);
-    ssd1306_fillRect(67, 40, 27, 8, 1);
-    ssd1306_fillRect(99, 40, 27, 8, 1);
+    ssd1306_fillRect(3, 37, 27, 8, 1);
+    ssd1306_fillRect(35, 37, 27, 8, 1);
+    ssd1306_fillRect(67, 37, 27, 8, 1);
+    ssd1306_fillRect(99, 37, 27, 8, 1);
 
     const char arrow_up[]    = { 0x04, '\0' };
     const char arrow_down[]  = { 0x01, '\0' };
     const char arrow_right[]  = { 0x02, '\0' };
     const char arrow_left[] = { 0x03, '\0' };
-    ssd1306_drawstr_sz(12, 40, (char*)arrow_up, 0, fontsize_8x8);  // 0はスペース文字を表示
-    ssd1306_drawstr_sz(44, 40, (char*)arrow_down, 0, fontsize_8x8);  // 1はスペース文字を表示
-    ssd1306_drawstr_sz(76, 40, (char*)arrow_left, 0, fontsize_8x8);  // 2はスペース文字を表示
-    ssd1306_drawstr_sz(108, 40, (char*)arrow_right, 0, fontsize_8x8); // 3はスペース文字を表示
+    drawstr_6px(13, 37, (const char*)arrow_up, 0);
+    drawstr_6px(45, 37, (const char*)arrow_down, 0);
+    drawstr_6px(77, 37, (const char*)arrow_left, 0);
+    drawstr_6px(109, 37, (const char*)arrow_right, 0);
 
-    ssd1306_drawstr_sz(3, 48, "Press >1sec", 1, fontsize_8x8);
+    drawstr_6px(3, 48, "Press >1sec", 1);
     ssd1306_fillRect(3, 56, 27, 8, 1);
     ssd1306_fillRect(35, 56, 27, 8, 1);
     ssd1306_fillRect(67, 56, 27, 8, 1);
     ssd1306_fillRect(99, 56, 27, 8, 1);
 
-    ssd1306_drawstr_sz(7, 56, "DEL", 0, fontsize_8x8);
-    ssd1306_drawstr_sz(103, 56, "END", 0, fontsize_8x8);
+    drawstr_6px(8, 56, "DEL", 0);
+    drawstr_6px(104, 56, "END", 0);
     ssd1306_refresh();
     // oled_refreshed_this_frame = true;
 }
