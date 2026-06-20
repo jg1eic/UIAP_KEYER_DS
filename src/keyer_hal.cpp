@@ -120,6 +120,9 @@ int GPIO_setup()
 	GPIO_pinMode(PIN_SW3, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
 	GPIO_pinMode(PIN_SW4, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
 	GPIO_pinMode(PIN_ST, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
+	GPIO_pinMode(PIN_VR_PWR, GPIO_pinMode_O_pushPull, GPIO_Speed_10MHz);
+	GPIO_digitalWrite(PIN_VR_PWR, low);
+	GPIO_pinMode(PIN_BATT, GPIO_pinMode_I_analog, GPIO_Speed_10MHz);
 
     return 0;
 }

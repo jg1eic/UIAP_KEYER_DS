@@ -15,6 +15,8 @@
 #define PIN_SW3    PD2     // SW 3
 #define PIN_SW4    PC4     // SW 4
 #define PIN_ST     PA1     // ストレートキー入力
+#define PIN_VR_PWR PD5     // スピードVR電源 ON/OFF（読み取り時のみHIGH）
+#define PIN_BATT   PD6     // 電池電圧測定（アナログ入力 AIN6）
 
 // ---- PWM出力ピン (TIM2 output set 0: CH1=D4, CH2=D3, CH3=C0, CH4=D7) ----
 //#define PWM_TONE  GPIOv_from_PORT_PIN(GPIO_port_C, 7)  // PD4 = TIM2_CH1
