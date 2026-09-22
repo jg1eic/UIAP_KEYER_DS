@@ -244,6 +244,7 @@ const char *auto_msg = NULL; // 実際に再生する文字列
 bool sys_msg_active = false; // システムメッセージか
 volatile bool keyout_enabled = true;       // 通常はON
 volatile bool ignore_paddle_input = false; // パドル入力を無視するフラグ
+volatile bool ignore_straight_key = false; // ストレートキー入力を無視するフラグ
 
 // ==== キータイミング計測用 ====
 uint32_t key_on_ticks = 0;
@@ -1420,6 +1421,7 @@ void play_mem_msg(uint8_t n)
 //==========================================
 bool read_straight_key(void)
 {
+    if (ignore_straight_key) return false; // 強制停止直後は離すまで無視
     return !GPIO_digitalRead(PIN_ST); // 押されたら true
 }
 
@@ -1639,6 +1641,12 @@ void handle_keyer_mode(void)
     if (ignore_paddle_input && !dot && !dash)
     {
         ignore_paddle_input = false;
+    }
+
+    /* ストレートキー入力無視フラグをクリア（キーが離されたら）*/
+    if (ignore_straight_key && GPIO_digitalRead(PIN_ST))
+    {
+        ignore_straight_key = false;
     }
 
     // スイッチ状態取取得
@@ -2098,7 +2106,7 @@ void draw_startup_screen(void)
     drawstr_6px(0, 30, "Powered by", 1);
     drawstr_6px(40, 40, "UIAPduino", 1);
     ssd1306_drawFastHLine(0, 50, 128, 1);
-    drawstr_6px(0, 52, "Version 0.4", 1);
+    drawstr_6px(0, 52, "Version 0.5", 1);
     ssd1306_refresh();
 }
 
@@ -2477,6 +2485,9 @@ void stop_play(void)
 
     // パドル入力を無視（停止操作が音声にならないようにするため）
     ignore_paddle_input = true;
+
+    // ストレートキー入力を無視（離すまで手動キーイング扱いにしないため）
+    ignore_straight_key = true;
 
     // スイッチマスクをセット：停止操作の入力を無視！
     sw_mask = 1;
