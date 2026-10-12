@@ -160,7 +160,20 @@ static uint8_t cur_msg = 0;  // 編集メモリ番号
 static uint8_t edit_pos = 0; // カーソル位置
 
 static const char edit_table[] =
-    " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?.=+-@"; // 編集文字テーブル
+    " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?.=+-@<>"; // 編集文字テーブル（欧文、<=ﾎﾚ >=ﾗﾀ）
+
+// 編集文字テーブル（和文：半角カナ ｱ〜ﾝ ﾞ ﾟ ｰ ､ ｡ ｢ ｣ と数字、<=ﾎﾚ >=ﾗﾀ）
+static const char edit_table_wabun[] =
+    " \xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF"
+    "\xC0\xC1\xC2\xC3\xC4\xC5\xC6\xC7\xC8\xC9\xCA\xCB\xCC\xCD\xCE\xCF"
+    "\xD0\xD1\xD2\xD3\xD4\xD5\xD6\xD7\xD8\xD9\xDA\xDB\xDC\xA6\xDD"
+    "\xDE\xDF\xB0\xA4\xA1\xA2\xA3"
+    "0123456789<>";
+
+// 和文/欧文
+static bool wabun_mode = false; // 手動キーイングの復号モード（true=和文）
+static bool wabun_saved = false; // フラッシュに保存済みの wabun_mode
+static uint8_t msg_wabun = 0;   // メッセージごとの和文フラグ（bit0〜3 = MSG1〜4）
 
 #define DISP_COLS 10 // 画面に表示する文字数（編集メッセージ）
 
@@ -260,11 +273,9 @@ volatile uint8_t cw_r = 0;
 volatile bool flush_done = false;
 volatile bool oled_dirty = false;  // OLEDリフレッシュ要求フラグ
 
-//モールス符号バッファ
-#define MORSE_BUF_LEN 8
-
-char morse_buf[MORSE_BUF_LEN];
-uint8_t morse_len = 0;
+//モールス符号バッファ（1バイト詰め：morse_code() と同じ形式）
+uint8_t morse_bits = 1;
+uint8_t morse_len = 0;   // 要素数（8以上は符号長オーバー）
 
 //volatile bool oled_need_refresh = false;
 //static bool oled_refreshed_this_frame = false;
@@ -318,9 +329,10 @@ uint32_t standby_magic;
 //==========================================
 // 関数プロトタイプ
 //==========================================
-static const char *morseForChar(char c);
-static void printAsc(int8_t asciinumber);
-static void printAscii(int8_t c);
+static uint8_t morse_code(uint8_t c);
+static void printAsc(uint8_t asciinumber);
+static void printAscii(uint8_t c);
+static void draw_lang_mark(uint8_t x, bool wabun);
 uint8_t job_paddle(void);
 uint8_t job_auto(void);
 void startTone(void);
@@ -355,120 +367,52 @@ void save_current_message_to_flash(void);
 
 //==========================================
 // Morse テーブル
+//  1符号を1バイトで表す：先頭の目印ビット1の後ろに 短点=0 / 長点=1 を並べる
+//  例) A ".-" = 0b101 = 0x05、0 "-----" = 0b111111 = 0x3F（最大7要素）
+//  0x00 = 未対応
 //==========================================
-static const char *morseForChar(char c)
+#define MORSE_KN   0x36 // -.--.
+#define MORSE_VA   0x45 // ...-.-
+#define MORSE_HORE 0x67 // -..--- ﾎﾚ（和文開始）
+#define MORSE_RATA 0x22 // ...-.  ﾗﾀ（和文終了）
+
+// 欧文：'+'(0x2B)〜'Z'(0x5A)
+static const uint8_t latin_tbl[] = {
+    0x2A, 0x73, 0x61, 0x55, 0x32, 0x3F, 0x2F, 0x27, // + , - . / 0 1 2
+    0x23, 0x21, 0x20, 0x30, 0x38, 0x3C, 0x3E, 0x00, // 3 4 5 6 7 8 9 :
+    0x00, 0x67, 0x31, 0x22, 0x4C, 0x5A, 0x05, 0x18, // ; < = > ? @ A B（<=ﾎﾚ >=ﾗﾀ）
+    0x1A, 0x0C, 0x02, 0x12, 0x0E, 0x10, 0x04, 0x17, // C D E F G H I J
+    0x0D, 0x14, 0x07, 0x06, 0x0F, 0x16, 0x1D, 0x0A, // K L M N O P Q R
+    0x08, 0x03, 0x09, 0x11, 0x0B, 0x19, 0x1B, 0x1C, // S T U V W X Y Z
+};
+
+// 和文：半角カナ 0xA1〜0xDF（小書きカナ・中点は未対応）
+static const uint8_t wabun_tbl[] = {
+    0x54, 0x6D, 0x52, 0x55, 0x00, 0x17, 0x00, 0x00, // ｡ ｢ ｣ ､ ･ ｦ ｧ ｨ
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2D, // ｩ ｪ ｫ ｬ ｭ ｮ ｯ ｰ
+    0x3B, 0x05, 0x09, 0x37, 0x28, 0x14, 0x34, 0x11, // ｱ ｲ ｳ ｴ ｵ ｶ ｷ ｸ
+    0x1B, 0x1F, 0x35, 0x3A, 0x3D, 0x2E, 0x1E, 0x06, // ｹ ｺ ｻ ｼ ｽ ｾ ｿ ﾀ
+    0x12, 0x16, 0x2B, 0x24, 0x0A, 0x1A, 0x10, 0x1D, // ﾁ ﾂ ﾃ ﾄ ﾅ ﾆ ﾇ ﾈ
+    0x13, 0x18, 0x39, 0x1C, 0x02, 0x0C, 0x19, 0x25, // ﾉ ﾊ ﾋ ﾌ ﾍ ﾎ ﾏ ﾐ
+    0x03, 0x31, 0x32, 0x0B, 0x33, 0x07, 0x08, 0x0E, // ﾑ ﾒ ﾓ ﾔ ﾕ ﾖ ﾗ ﾘ
+    0x36, 0x0F, 0x15, 0x0D, 0x2A, 0x04, 0x26,       // ﾙ ﾚ ﾛ ﾜ ﾝ ﾞ ﾟ
+};
+
+// 文字→符号（カナは和文、それ以外は欧文の符号）
+static uint8_t morse_code(uint8_t c)
 {
-    // 小文字b は “BT” (E-...-) 扱い
-    // if (c == '=')
-    //     return "-...-";
-    // if (c == '+')
-    //     return ".-.-.";
+    if (c >= 0xA1 && c <= 0xDF)
+        return wabun_tbl[c - 0xA1];
+    // 小文字k は KN、小文字v は VA
     if (c == 'k')
-        return "-.--.";
+        return MORSE_KN;
     if (c == 'v')
-        return "...-.-";
+        return MORSE_VA;
     if (c >= 'a' && c <= 'z')
-        c = (char)(c - 'a' + 'A');
-
-    switch (c)
-    {
-    // Letters
-    case 'A':
-        return ".-";
-    case 'B':
-        return "-...";
-    case 'C':
-        return "-.-.";
-    case 'D':
-        return "-..";
-    case 'E':
-        return ".";
-    case 'F':
-        return "..-.";
-    case 'G':
-        return "--.";
-    case 'H':
-        return "....";
-    case 'I':
-        return "..";
-    case 'J':
-        return ".---";
-    case 'K':
-        return "-.-";
-    case 'L':
-        return ".-..";
-    case 'M':
-        return "--";
-    case 'N':
-        return "-.";
-    case 'O':
-        return "---";
-    case 'P':
-        return ".--.";
-    case 'Q':
-        return "--.-";
-    case 'R':
-        return ".-.";
-    case 'S':
-        return "...";
-    case 'T':
-        return "-";
-    case 'U':
-        return "..-";
-    case 'V':
-        return "...-";
-    case 'W':
-        return ".--";
-    case 'X':
-        return "-..-";
-    case 'Y':
-        return "-.--";
-    case 'Z':
-        return "--..";
-
-    // Digits
-    case '0':
-        return "-----";
-    case '1':
-        return ".----";
-    case '2':
-        return "..---";
-    case '3':
-        return "...--";
-    case '4':
-        return "....-";
-    case '5':
-        return ".....";
-    case '6':
-        return "-....";
-    case '7':
-        return "--...";
-    case '8':
-        return "---..";
-    case '9':
-        return "----.";
-
-    // Punctuation (必要なものだけ)
-    case '.':
-        return ".-.-.-";
-    case ',':
-        return "--..--";
-    case '?':
-        return "..--..";
-    case '/':
-        return "-..-.";
-    case '=':
-        return "-...-";
-    case '+':
-        return ".-.-.";
-    case '-':
-        return "-....-";
-    case '@':
-        return ".--.-.";
-
-    default:
-        return nullptr;
-    }
+        c = (uint8_t)(c - 'a' + 'A');
+    if (c >= '+' && c <= 'Z')
+        return latin_tbl[c - '+'];
+    return 0;
 }
 
 
@@ -532,7 +476,7 @@ static void redraw_lines(void)
     }
 }
 
-static void printAsc(int8_t asciinumber)
+static void printAsc(uint8_t asciinumber)
 {
     // 行がいっぱい→スクロール
     if (lcdindex >= colums) {
@@ -561,7 +505,7 @@ static void printAsc(int8_t asciinumber)
 //==========================================
 //	printascii : print the ascii code to the lcd
 //==========================================
-static void printAscii(int8_t c)
+static void printAscii(uint8_t c)
 {
     switch (c)
     {
@@ -580,6 +524,14 @@ static void printAscii(int8_t c)
     case 'v': // VA
         printAsc('V');
         printAsc('A');
+        break;
+    case '<': // ﾎﾚ
+        printAsc(0xCE);
+        printAsc(0xDA);
+        break;
+    case '>': // ﾗﾀ
+        printAsc(0xD7);
+        printAsc(0xC0);
         break;
     default:
         printAsc(c);
@@ -612,7 +564,7 @@ static bool is_valid_message(const uint8_t *buf)
             has_null = true;
             break;
         }
-        if (c < 0x20 || c > 0x7E) // 非ASCII
+        if ((c < 0x20 || c > 0x7E) && (c < 0xA1 || c > 0xDF)) // ASCII・半角カナ以外
             return false;
     }
     return has_null;
@@ -677,6 +629,9 @@ void load_settings_from_flash(void)
         tone_freq_idx        = (buf[3] < 3) ? buf[3] : 1;  // 旧データ(0xFF)はデフォルト651Hz
         repeat_interval_idx  = (buf[4] < 6) ? buf[4] : 0;
         standby_time_idx     = (buf[5] < 4) ? buf[5] : 0;
+        msg_wabun            = (buf[6] != 0xFF) ? (buf[6] & 0x0F) : 0; // 旧データ(0xFF)は全て欧文
+        wabun_mode           = (buf[7] == 1);
+        wabun_saved          = wabun_mode;
     } else {
         paddle_swap          = false;
         sidetone_enabled     = true;
@@ -697,6 +652,9 @@ void save_settings_to_flash(void)
     buf[3] = tone_freq_idx;
     buf[4] = repeat_interval_idx;
     buf[5] = standby_time_idx;
+    buf[6] = msg_wabun;
+    buf[7] = wabun_mode ? 1 : 0;
+    wabun_saved = wabun_mode;
     eep.erase(PAGE_SETTINGS);
     eep.write(PAGE_SETTINGS, buf);
 }
@@ -805,8 +763,8 @@ uint8_t job_auto(void)
     static auto_state_t state = AUTO_IDLE;
     static uint32_t left_time = 0;   // 0.5dit タイマー
     static uint8_t half_rem = 0;     // 残り half-dit 数
-    static const char *seq = nullptr;
-    static uint8_t elem = 0;
+    static uint8_t code = 0;         // 送信中の符号（1バイト詰め）
+    static uint8_t elem = 0;         // 送信中の要素のビット位置
     static uint16_t pos = 0;
     static uint32_t gap_until = 0;   // リピート待機終了時刻
     static const uint32_t repeat_gap_tbl[6] = {3906, 11718, 19531, 39062, 117188, 234375};
@@ -821,7 +779,7 @@ uint8_t job_auto(void)
         state = AUTO_IDLE;
         left_time = 0;
         half_rem = 0;
-        seq = nullptr;
+        code = 0;
         elem = 0;
         pos = 0;
         gap_until = 0;
@@ -900,10 +858,9 @@ uint8_t job_auto(void)
                     printAscii(c); // 送信文字を表示
                 }
 
-                seq = morseForChar(c);
-                elem = 0;
+                code = morse_code((uint8_t)c);
 
-                if (seq == nullptr) {
+                if (code == 0) {
                     // 未対応文字→スペース扱い
                     pos++;
                     state = AUTO_WORD_GAP;
@@ -911,9 +868,16 @@ uint8_t job_auto(void)
                     break;
                 }
 
+                // 目印ビットを探し、その次のビットが最初の要素
+                elem = 0x80;
+                while (!(code & elem)) {
+                    elem >>= 1;
+                }
+                elem >>= 1;
+
                 // 最初の要素を送信開始
                 state = AUTO_ELEM_ON;
-                half_rem = (seq[elem] == '.') ? 2 : 6; // dit=1dit=2half, dah=3dit=6half
+                half_rem = (code & elem) ? 6 : 2; // dit=1dit=2half, dah=3dit=6half
                 break;
             }
 
@@ -925,8 +889,8 @@ uint8_t job_auto(void)
 
             case AUTO_ELEM_OFF:
                 // 次の要素へ
-                elem++;
-                if (seq[elem] == '\0') {
+                elem >>= 1;
+                if (elem == 0) {
                     // 文字の最後の要素が終わった
                     char next = auto_msg[pos + 1];
 
@@ -975,7 +939,7 @@ uint8_t job_auto(void)
                 } else {
                     // まだ要素が残ってい →次の要素 ON
                     state = AUTO_ELEM_ON;
-                    half_rem = (seq[elem] == '.') ? 2 : 6;
+                    half_rem = (code & elem) ? 6 : 2;
                 }
                 break;
 
@@ -993,7 +957,7 @@ uint8_t job_auto(void)
                 // リピート待機中：1秒経過したら最初から再生
                 if ((int32_t)(tim1_tick256 - gap_until) >= 0) {
                     pos = 0;
-                    seq = nullptr;
+                    code = 0;
                     elem = 0;
                     state = AUTO_IDLE;
                 }
@@ -1324,18 +1288,31 @@ uint8_t sw_get_info()
 //==========================================
 // 編集の次の文字へ
 //==========================================
+// 編集中メッセージの言語に合わせた文字テーブル
+static const char *cur_edit_table(void)
+{
+    return (msg_wabun & (1 << cur_msg)) ? edit_table_wabun : edit_table;
+}
+
+// テーブル内で dir(+1/-1) だけ移動した文字（端は反対側へ、見つからなければ先頭）
+// ※ch32fun の strchr は char が符号付きだとカナ(0x80以上)に一致しないため使わない
+static char step_char(char c, int8_t dir)
+{
+    const char *tbl = cur_edit_table();
+    uint8_t n = (uint8_t)strlen(tbl);
+    uint8_t i;
+
+    for (i = 0; i < n; i++) {
+        if (tbl[i] == c) break;
+    }
+    if (i == n) return tbl[0];
+
+    return tbl[(uint8_t)(i + n + dir) % n];
+}
+
 char next_char(char c)
 {
-    const char *p = strchr(edit_table, c);
-    if (!p) return edit_table[0];
-
-    p++;  // 次へ
-
-    // 末尾なら先頭へ
-    if (*p == '\0')
-        return edit_table[0];
-
-    return *p;
+    return step_char(c, 1);
 }
 
 
@@ -1345,15 +1322,7 @@ char next_char(char c)
 //==========================================
 char prev_char(char c)
 {
-    const char *p = strchr(edit_table, c);
-    if (!p) return edit_table[0];
-
-    if (p == edit_table)
-        p = edit_table + strlen(edit_table) - 1;
-    else
-        p--;
-
-    return *p;
+    return step_char(c, -1);
 }
 
 
@@ -1444,14 +1413,41 @@ static inline void cw_push(cw_event_t ev)
 //==========================================
 //  モールス符号から文字へ変換
 //==========================================
-char morse_to_char(const char *m)
+uint8_t morse_to_char(uint8_t code)
 {
-    static const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?/=+";
-    for (const char *p = charset; *p; p++) {
-        const char *code = morseForChar(*p);
-        if (code && strcmp(code, m) == 0) return *p;
+    uint8_t i;
+
+    // 和文モードはカナを優先（4要素以下の符号は全てカナになる）
+    if (wabun_mode) {
+        for (i = 0; i < sizeof(wabun_tbl); i++) {
+            if (wabun_tbl[i] == code) return 0xA1 + i;
+        }
+    }
+    // 数字・記号（欧文モードは英字も）
+    for (i = 0; i < sizeof(latin_tbl); i++) {
+        if (latin_tbl[i] == code) return '+' + i;
     }
     return '*';
+}
+
+//==========================================
+//  受信中の1文字を確定して表示（ﾎﾚ/ﾗﾀで和文/欧文を自動切替）
+//==========================================
+static void flush_morse_char(void)
+{
+    if (morse_len == 0) return;
+
+    uint8_t code = (morse_len <= 7) ? morse_bits : 0;
+    morse_len = 0;
+    if (mode == MODE_PLAY || auto_mode) return;
+
+    if (code == MORSE_HORE || code == MORSE_RATA) {
+        wabun_mode = (code == MORSE_HORE);
+        printAscii(wabun_mode ? '<' : '>'); // ﾎﾚ / ﾗﾀ
+        draw_lang_mark(84, wabun_mode);
+        return;
+    }
+    printAscii(morse_to_char(code)); // LCD表示
 }
 
 
@@ -1523,39 +1519,21 @@ void cw_decode_task(void)
         switch (ev)
         {
         case EV_DOT:
-            if (morse_len < MORSE_BUF_LEN - 1) {
-                morse_buf[morse_len++] = '.';
-            }
-            break;
-
         case EV_DASH:
-            if (morse_len < MORSE_BUF_LEN - 1) {
-                morse_buf[morse_len++] = '-';
+            // 先頭要素で目印ビットから組み立て直す（外部で morse_len=0 にされた場合も含む）
+            if (morse_len == 0) morse_bits = 1;
+            if (morse_len < 8) morse_len++;
+            if (morse_len <= 7) {
+                morse_bits = (uint8_t)((morse_bits << 1) | (ev == EV_DASH));
             }
             break;
 
         case EV_CHAR_GAP:
-            if (morse_len > 0) {
-                morse_buf[morse_len] = '\0';   // 文字列化
-                char c = morse_to_char(morse_buf);
-                if (mode != MODE_PLAY && !auto_mode) {
-                    printAscii(c); // LCD表示
-                }
-                //if (mode != MODE_PLAY) DEBUG_PRINTF("Decoded='%c', Buf=%s, Len=%d\r\n", c, morse_buf, morse_len);
-                morse_len = 0;
-            }
+            flush_morse_char();
             break;
 
         case EV_WORD_GAP:
-            if (morse_len > 0) {
-                morse_buf[morse_len] = '\0';
-                char c = morse_to_char(morse_buf);
-                if (mode != MODE_PLAY && !auto_mode) {
-                    printAscii(c); // LCD表示
-                }
-                //if (mode != MODE_PLAY) DEBUG_PRINTF("Decoded='%c', Buf=%s, Len=%d\r\n", c, morse_buf, morse_len);
-                morse_len = 0;
-            }
+            flush_morse_char();
             if (mode != MODE_PLAY && !auto_mode) {
                 printAscii(32); // スペース表示
             }
@@ -1671,6 +1649,17 @@ void handle_keyer_mode(void)
         setup_scroll = 0;
         mode = MODE_SETUP;
         draw_setup_screen();
+        return;
+    }
+
+    /* F1+F4ダブルクリック → 和文/欧文切替 */
+    if (sw_mode == SW_INFO_DOUBLE && (sw_stat & (SW_1 | SW_4)) == (SW_1 | SW_4))
+    {
+        SW_CLEAR();
+        wabun_mode = !wabun_mode;
+        save_settings_to_flash();
+        draw_lang_mark(84, wabun_mode);
+        ssd1306_refresh();
         return;
     }
 
@@ -1900,11 +1889,21 @@ void handle_edit_mode(void)
 
     /* ===== 以下は従来どおり・即時反応でOK ===== */
 
+    // ※SW1+SW4 →このメッセージの和文/欧文を切替
+    if (sw_mode == SW_INFO_DOUBLE && (sw_stat & (SW_1 | SW_4)) == (SW_1 | SW_4))
+    {
+        SW_CLEAR();
+        msg_wabun ^= (uint8_t)(1 << cur_msg);
+        draw_edit_screen();
+        return;
+    }
+
     // ※SW4 長押い→保存して終了
     if (sw_mode == SW_INFO_PRESS && sw_stat == SW_4)
     {
         SW_CLEAR();
         save_current_message_to_flash();
+        save_settings_to_flash(); // 和文/欧文フラグも保存
         //printf("Message recorded\r\n");
         mode = MODE_KEYER;
         last_activity_tick = tim1_tick256;
@@ -1975,6 +1974,15 @@ static void drawstr_6px(uint8_t x, uint8_t y, const char *str, uint8_t color)
         ssd1306_drawchar_sz(x, y, *str++, color, fontsize_8x8);
         x += 6;
     }
+}
+
+//==========================================
+//  和文/欧文マーク（ﾜ=和文 / A=欧文）
+//==========================================
+static void draw_lang_mark(uint8_t x, bool wabun)
+{
+    ssd1306_fillRect(x, 0, 8, 8, 0);
+    ssd1306_drawchar_sz(x, 0, wabun ? 0xDC : 'A', 1, fontsize_8x8);
 }
 
 //==========================================
@@ -2118,6 +2126,7 @@ void draw_keyer_screen(void)
 {
     ssd1306_setbuf(0); // 0=黒, 1=白
     drawstr_6px(0, 0, "KEYER", 1);
+    draw_lang_mark(84, wabun_mode);
     draw_wpm_value();
     draw_bat_value();
     ssd1306_drawFastHLine(0, 10, 128, 1);
@@ -2133,6 +2142,7 @@ void draw_edit_select(void)
     ssd1306_drawFastHLine(0, 10, 128, 1);
     drawstr_6px(0, 16, "F1-F4:SELECT MSG", 1);
     drawstr_6px(0, 25, "F1+F2:Return", 1);
+    drawstr_6px(0, 34, "F1+F4:\xDC/A (in EDIT)", 1);
     ssd1306_fillRect(3, 48, 27, 16, 1);
     ssd1306_fillRect(35, 48, 27, 16, 1);
     ssd1306_fillRect(67, 48, 27, 16, 1);
@@ -2164,6 +2174,7 @@ void draw_edit_screen(void)
     buf[0]='E'; buf[1]='D'; buf[2]='I'; buf[3]='T'; buf[4]=' ';
     buf[5]='M'; buf[6]='S'; buf[7]='G'; buf[8]='0'+(cur_msg+1); buf[9]='\0';
     drawstr_6px(0, 0, buf, 1);
+    draw_lang_mark(62, msg_wabun & (1 << cur_msg));
 
     /* ===== カーソル位置表示 (XX/63) ===== */
     {
@@ -2274,7 +2285,12 @@ void enter_standby(void)
         exti_line_from_pin(PIN_SW1) | exti_line_from_pin(PIN_SW2) |
         exti_line_from_pin(PIN_SW3) | exti_line_from_pin(PIN_SW4) |
         exti_line_from_pin(PIN_DOT) | exti_line_from_pin(PIN_DASH) |
-        exti_line_from_pin(PIN_ST); 
+        exti_line_from_pin(PIN_ST);
+
+    // ﾎﾚ/ﾗﾀで自動切替した和文/欧文モードを、復帰後も保つため保存
+    if (wabun_mode != wabun_saved) {
+        save_settings_to_flash();
+    }
 
     tone_on = false;
     GPIO_digitalWrite(PIN_TONE, low);
@@ -2522,6 +2538,9 @@ int main()
 
     // ssd1306_refreshはTIM1割り込みを一時無効化するため、スタンバイ復帰時のOLED再初期化を
     // tim1_int_init()より前に完了させる（復帰パドルの最初の長短点が正確になる）
+    // 和文/欧文マークを正しく描くため、画面描画より前に設定を読み込む
+    init_flash_messages();
+
     bool resumed_from_standby = (standby_magic == STANDBY_MAGIC_VALUE);
     if (resumed_from_standby) {
         standby_magic = 0;  // 次回のためにクリア
@@ -2545,7 +2564,6 @@ int main()
         dit_est = (1200UL * 1000) / (wpm * 256);
         key_spd = dit_est;
     }
-    init_flash_messages();
     tim1_int_init(); //
     // tim2_pwm_init();             // TIM2 PWM Setup
 
