@@ -232,6 +232,41 @@ volatile StopReason stop_reason = STOP_NONE;
 static bool repeat_mode = false;       // リピート再生中フラグ
 static uint8_t repeat_msg_idx = 0;     // リピート対象メッセージ番号
 
+// 受信練習（ランダム5文字グループを連続送信）
+#define PRACTICE_OFF 0
+#define PRACTICE_EN  1 // 欧文: A-Z, 0-9
+#define PRACTICE_JA  2 // 和文: ｱ-ﾝ, ｦ（濁点・半濁点なし）
+static uint8_t practice_mode = PRACTICE_OFF;
+static char practice_buf[7];           // 5文字 + 語間スペース + 終端
+static uint32_t rnd_state = 2463534242u;
+
+static uint32_t rnd_next(void)
+{
+    // xorshift32
+    rnd_state ^= rnd_state << 13;
+    rnd_state ^= rnd_state >> 17;
+    rnd_state ^= rnd_state << 5;
+    return rnd_state;
+}
+
+// 次の5文字グループを practice_buf に作る
+static void practice_next_group(void)
+{
+    for (uint8_t i = 0; i < 5; i++) {
+        char c;
+        if (practice_mode == PRACTICE_JA) {
+            uint8_t n = rnd_next() % 46;               // ｱ-ﾝ(45文字) + ｦ
+            c = (char)((n == 45) ? 0xA6 : (0xB1 + n));
+        } else {
+            uint8_t n = rnd_next() % 36;               // A-Z(26文字) + 0-9
+            c = (char)((n < 26) ? ('A' + n) : ('0' + n - 26));
+        }
+        practice_buf[i] = c;
+    }
+    practice_buf[5] = ' ';
+    practice_buf[6] = '\0';
+}
+
 // スイッチの判定
 uint8_t sw_mask = 0; // スイッチ押しっぱなしをカウントしないためのマスク
 uint8_t sw_clicked = 0;
@@ -318,7 +353,7 @@ uint32_t standby_magic;
 //==========================================
 // 関数プロトタイプ
 //==========================================
-static const char *morseForChar(char c);
+static uint8_t morseForChar(char c);
 static void printAsc(int8_t asciinumber);
 static void printAscii(int8_t c);
 uint8_t job_paddle(void);
@@ -330,6 +365,7 @@ void update_speed_from_adc(void);
 uint16_t read_battery_mv(void);
 void update_battery_status(void);
 void start_play(uint8_t msg);
+void start_practice(uint8_t kind);
 void stop_play(void);
 void adjust_edit_view(void);
 void update_switch_status(void);
@@ -356,119 +392,133 @@ void save_current_message_to_flash(void);
 //==========================================
 // Morse テーブル
 //==========================================
-static const char *morseForChar(char c)
+// 1文字 1 バイトの符号表。下位ビットから順に要素（0=短点, 1=長点）を並べ、
+// 最後の要素の 1 つ上に終端ビット 1 を置く。例: ".-" -> 0b110, 0 は未対応文字。
+static const uint8_t morse_tbl_ascii[0x30] = {
+    0x2A, // 0x2B + .-.-.
+    0x73, // 0x2C , --..--
+    0x61, // 0x2D - -....-
+    0x6A, // 0x2E . .-.-.-
+    0x29, // 0x2F / -..-.
+    0x3F, // 0x30 0 -----
+    0x3E, // 0x31 1 .----
+    0x3C, // 0x32 2 ..---
+    0x38, // 0x33 3 ...--
+    0x30, // 0x34 4 ....-
+    0x20, // 0x35 5 .....
+    0x21, // 0x36 6 -....
+    0x23, // 0x37 7 --...
+    0x27, // 0x38 8 ---..
+    0x2F, // 0x39 9 ----.
+    0x00, // 0x3A :
+    0x00, // 0x3B ;
+    0x00, // 0x3C <
+    0x31, // 0x3D = -...-
+    0x00, // 0x3E >
+    0x4C, // 0x3F ? ..--..
+    0x56, // 0x40 @ .--.-.
+    0x06, // 0x41 A .-
+    0x11, // 0x42 B -...
+    0x15, // 0x43 C -.-.
+    0x09, // 0x44 D -..
+    0x02, // 0x45 E .
+    0x14, // 0x46 F ..-.
+    0x0B, // 0x47 G --.
+    0x10, // 0x48 H ....
+    0x04, // 0x49 I ..
+    0x1E, // 0x4A J .---
+    0x0D, // 0x4B K -.-
+    0x12, // 0x4C L .-..
+    0x07, // 0x4D M --
+    0x05, // 0x4E N -.
+    0x0F, // 0x4F O ---
+    0x16, // 0x50 P .--.
+    0x1B, // 0x51 Q --.-
+    0x0A, // 0x52 R .-.
+    0x08, // 0x53 S ...
+    0x03, // 0x54 T -
+    0x0C, // 0x55 U ..-
+    0x18, // 0x56 V ...-
+    0x0E, // 0x57 W .--
+    0x19, // 0x58 X -..-
+    0x1D, // 0x59 Y -.--
+    0x13, // 0x5A Z --..
+};
+static const uint8_t morse_tbl_kana[0x3A] = {
+    0x1E, // 0xA6 ｦ .---
+    0x00, // 0xA7
+    0x00, // 0xA8
+    0x00, // 0xA9
+    0x00, // 0xAA
+    0x00, // 0xAB
+    0x00, // 0xAC
+    0x00, // 0xAD
+    0x00, // 0xAE
+    0x00, // 0xAF
+    0x36, // 0xB0 ｰ .--.-
+    0x3B, // 0xB1 ｱ --.--
+    0x06, // 0xB2 ｲ .-
+    0x0C, // 0xB3 ｳ ..-
+    0x3D, // 0xB4 ｴ -.---
+    0x22, // 0xB5 ｵ .-...
+    0x12, // 0xB6 ｶ .-..
+    0x25, // 0xB7 ｷ -.-..
+    0x18, // 0xB8 ｸ ...-
+    0x1D, // 0xB9 ｹ -.--
+    0x1F, // 0xBA ｺ ----
+    0x35, // 0xBB ｻ -.-.-
+    0x2B, // 0xBC ｼ --.-.
+    0x37, // 0xBD ｽ ---.-
+    0x2E, // 0xBE ｾ .---.
+    0x17, // 0xBF ｿ ---.
+    0x05, // 0xC0 ﾀ -.
+    0x14, // 0xC1 ﾁ ..-.
+    0x16, // 0xC2 ﾂ .--.
+    0x3A, // 0xC3 ﾃ .-.--
+    0x24, // 0xC4 ﾄ ..-..
+    0x0A, // 0xC5 ﾅ .-.
+    0x15, // 0xC6 ﾆ -.-.
+    0x10, // 0xC7 ﾇ ....
+    0x1B, // 0xC8 ﾈ --.-
+    0x1C, // 0xC9 ﾉ ..--
+    0x11, // 0xCA ﾊ -...
+    0x33, // 0xCB ﾋ --..-
+    0x13, // 0xCC ﾌ --..
+    0x02, // 0xCD ﾍ .
+    0x09, // 0xCE ﾎ -..
+    0x19, // 0xCF ﾏ -..-
+    0x34, // 0xD0 ﾐ ..-.-
+    0x03, // 0xD1 ﾑ -
+    0x31, // 0xD2 ﾒ -...-
+    0x29, // 0xD3 ﾓ -..-.
+    0x0E, // 0xD4 ﾔ .--
+    0x39, // 0xD5 ﾕ -..--
+    0x07, // 0xD6 ﾖ --
+    0x08, // 0xD7 ﾗ ...
+    0x0B, // 0xD8 ﾘ --.
+    0x2D, // 0xD9 ﾙ -.--.
+    0x0F, // 0xDA ﾚ ---
+    0x1A, // 0xDB ﾛ .-.-
+    0x0D, // 0xDC ﾜ -.-
+    0x2A, // 0xDD ﾝ .-.-.
+    0x04, // 0xDE ﾞ ..
+    0x2C, // 0xDF ﾟ ..--.
+};
+
+static uint8_t morseForChar(char c)
 {
-    // 小文字b は “BT” (E-...-) 扱い
-    // if (c == '=')
-    //     return "-...-";
-    // if (c == '+')
-    //     return ".-.-.";
-    if (c == 'k')
-        return "-.--.";
-    if (c == 'v')
-        return "...-.-";
-    if (c >= 'a' && c <= 'z')
-        c = (char)(c - 'a' + 'A');
-
-    switch (c)
-    {
-    // Letters
-    case 'A':
-        return ".-";
-    case 'B':
-        return "-...";
-    case 'C':
-        return "-.-.";
-    case 'D':
-        return "-..";
-    case 'E':
-        return ".";
-    case 'F':
-        return "..-.";
-    case 'G':
-        return "--.";
-    case 'H':
-        return "....";
-    case 'I':
-        return "..";
-    case 'J':
-        return ".---";
-    case 'K':
-        return "-.-";
-    case 'L':
-        return ".-..";
-    case 'M':
-        return "--";
-    case 'N':
-        return "-.";
-    case 'O':
-        return "---";
-    case 'P':
-        return ".--.";
-    case 'Q':
-        return "--.-";
-    case 'R':
-        return ".-.";
-    case 'S':
-        return "...";
-    case 'T':
-        return "-";
-    case 'U':
-        return "..-";
-    case 'V':
-        return "...-";
-    case 'W':
-        return ".--";
-    case 'X':
-        return "-..-";
-    case 'Y':
-        return "-.--";
-    case 'Z':
-        return "--..";
-
-    // Digits
-    case '0':
-        return "-----";
-    case '1':
-        return ".----";
-    case '2':
-        return "..---";
-    case '3':
-        return "...--";
-    case '4':
-        return "....-";
-    case '5':
-        return ".....";
-    case '6':
-        return "-....";
-    case '7':
-        return "--...";
-    case '8':
-        return "---..";
-    case '9':
-        return "----.";
-
-    // Punctuation (必要なものだけ)
-    case '.':
-        return ".-.-.-";
-    case ',':
-        return "--..--";
-    case '?':
-        return "..--..";
-    case '/':
-        return "-..-.";
-    case '=':
-        return "-...-";
-    case '+':
-        return ".-.-.";
-    case '-':
-        return "-....-";
-    case '@':
-        return ".--.-.";
-
-    default:
-        return nullptr;
-    }
+    uint8_t u = (uint8_t)c;
+    if (u == 'k')
+        return 0x2D; // KN -.--.
+    if (u == 'v')
+        return 0x68; // VA ...-.-
+    if (u >= 'a' && u <= 'z')
+        u -= 'a' - 'A';
+    if (u >= 0x2B && u <= 0x5A)
+        return morse_tbl_ascii[u - 0x2B];
+    if (u >= 0xA6 && u <= 0xDF)
+        return morse_tbl_kana[u - 0xA6]; // 半角カナ（和文）
+    return 0;
 }
 
 
@@ -805,8 +855,7 @@ uint8_t job_auto(void)
     static auto_state_t state = AUTO_IDLE;
     static uint32_t left_time = 0;   // 0.5dit タイマー
     static uint8_t half_rem = 0;     // 残り half-dit 数
-    static const char *seq = nullptr;
-    static uint8_t elem = 0;
+    static uint8_t seq = 0;          // 送信中の符号（残り要素 + 終端ビット）
     static uint16_t pos = 0;
     static uint32_t gap_until = 0;   // リピート待機終了時刻
     static const uint32_t repeat_gap_tbl[6] = {3906, 11718, 19531, 39062, 117188, 234375};
@@ -821,8 +870,7 @@ uint8_t job_auto(void)
         state = AUTO_IDLE;
         left_time = 0;
         half_rem = 0;
-        seq = nullptr;
-        elem = 0;
+        seq = 0;
         pos = 0;
         gap_until = 0;
         return 0;
@@ -852,6 +900,13 @@ uint8_t job_auto(void)
 
             case AUTO_IDLE: {
                 char c = auto_msg[pos];
+
+                // 受信練習：グループを送り終えたら次の5文字を作って続ける
+                if (c == '\0' && practice_mode) {
+                    practice_next_group();
+                    pos = 0;
+                    c = auto_msg[0];
+                }
 
                 // メッセージ終端
                 if (c == '\0') {
@@ -895,15 +950,14 @@ uint8_t job_auto(void)
                     break;
                 }
 
-                // 通常文字
-                if (!sys_msg_active) {
+                // 通常文字（受信練習では答えが先に見えないよう送信後に表示）
+                if (!sys_msg_active && !practice_mode) {
                     printAscii(c); // 送信文字を表示
                 }
 
                 seq = morseForChar(c);
-                elem = 0;
 
-                if (seq == nullptr) {
+                if (seq == 0) {
                     // 未対応文字→スペース扱い
                     pos++;
                     state = AUTO_WORD_GAP;
@@ -913,7 +967,7 @@ uint8_t job_auto(void)
 
                 // 最初の要素を送信開始
                 state = AUTO_ELEM_ON;
-                half_rem = (seq[elem] == '.') ? 2 : 6; // dit=1dit=2half, dah=3dit=6half
+                half_rem = (seq & 1) ? 6 : 2; // dit=1dit=2half, dah=3dit=6half
                 break;
             }
 
@@ -925,9 +979,12 @@ uint8_t job_auto(void)
 
             case AUTO_ELEM_OFF:
                 // 次の要素へ
-                elem++;
-                if (seq[elem] == '\0') {
+                seq >>= 1;
+                if (seq == 1) {
                     // 文字の最後の要素が終わった
+                    if (practice_mode) {
+                        printAscii(auto_msg[pos]); // 受信練習：鳴り終わってから表示
+                    }
                     char next = auto_msg[pos + 1];
 
                     if (next == '\0') {
@@ -955,7 +1012,9 @@ uint8_t job_auto(void)
                         return 0;
                     } else if (next == ' ') {
                         // ※ここでスペースをつ表示する
-                        if (!sys_msg_active) {
+                        if (practice_mode) {
+                            lcdindex = colums; // 受信練習：1行に1グループ
+                        } else if (!sys_msg_active) {
                             printAscii(' ');
                         }
 
@@ -975,7 +1034,7 @@ uint8_t job_auto(void)
                 } else {
                     // まだ要素が残ってい →次の要素 ON
                     state = AUTO_ELEM_ON;
-                    half_rem = (seq[elem] == '.') ? 2 : 6;
+                    half_rem = (seq & 1) ? 6 : 2;
                 }
                 break;
 
@@ -993,8 +1052,7 @@ uint8_t job_auto(void)
                 // リピート待機中：1秒経過したら最初から再生
                 if ((int32_t)(tim1_tick256 - gap_until) >= 0) {
                     pos = 0;
-                    seq = nullptr;
-                    elem = 0;
+                    seq = 0;
                     state = AUTO_IDLE;
                 }
                 break;
@@ -1447,9 +1505,18 @@ static inline void cw_push(cw_event_t ev)
 char morse_to_char(const char *m)
 {
     static const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?/=+";
+
+    // 受信した ".-" 形式の文字列を符号表と同じ 1 バイト形式に変換して比較
+    uint8_t code = 0;
+    uint8_t bit = 1;
+    for (; *m; m++) {
+        if (*m == '-') code |= bit;
+        bit <<= 1;
+    }
+    code |= bit;
+
     for (const char *p = charset; *p; p++) {
-        const char *code = morseForChar(*p);
-        if (code && strcmp(code, m) == 0) return *p;
+        if (morseForChar(*p) == code) return *p;
     }
     return '*';
 }
@@ -1671,6 +1738,20 @@ void handle_keyer_mode(void)
         setup_scroll = 0;
         mode = MODE_SETUP;
         draw_setup_screen();
+        return;
+    }
+
+    /* SW1+SW3 → 欧文受信練習 / SW2+SW4 → 和文受信練習 */
+    if (sw_mode == SW_INFO_DOUBLE && (sw_stat & (SW_1 | SW_3)) == (SW_1 | SW_3))
+    {
+        SW_CLEAR();
+        start_practice(PRACTICE_EN);
+        return;
+    }
+    if (sw_mode == SW_INFO_DOUBLE && (sw_stat & (SW_2 | SW_4)) == (SW_2 | SW_4))
+    {
+        SW_CLEAR();
+        start_practice(PRACTICE_JA);
         return;
     }
 
@@ -2462,9 +2543,9 @@ void start_play(uint8_t msg)
     cur_msg = msg;
     last_activity_tick = tim1_tick256;
 
-    auto_msg = msgs[msg]; // ※追加：生成する文字列を指定
+    auto_msg = practice_mode ? practice_buf : msgs[msg]; // ※追加：生成する文字列を指定
     sys_msg_active = false;
-    keyout_enabled = true;
+    keyout_enabled = !practice_mode; // 受信練習中は無線機をキーイングしない
 
     // 再生開始時に未確定データをクリアして、前回の残りで誤デコードされないようにする
     morse_len = 0;    // 未確定のモールス符号を破棄
@@ -2478,10 +2559,32 @@ void start_play(uint8_t msg)
     mode = MODE_PLAY;
 }
 
+//==========================================
+//  受信練習開始（何か操作すると handle_play_mode で停止）
+//==========================================
+void start_practice(uint8_t kind)
+{
+    practice_mode = kind;
+    rnd_state ^= tim1_tick256;         // 押したタイミングで乱数を変える
+    if (rnd_state == 0) rnd_state = 1;
+    practice_next_group();
+
+    start_play(0);                     // 再生状態の初期化を共用（practice_buf を送信）
+
+    reset_decoded_display();
+    draw_keyer_screen();
+    ssd1306_fillRect(0, 0, 40, 8, 0);
+    drawstr_6px(0, 0, (kind == PRACTICE_JA) ? "RX \xB1\xB2\xB3" : "RX ABC", 1);
+    redraw_lines();
+    ssd1306_refresh();
+}
+
 void stop_play(void)
 {
     auto_mode = false;     // 自動送信OFF
     req_reset_auto = true; // job_auto の状態を初期化
+    practice_mode = PRACTICE_OFF;
+    keyout_enabled = true;
 
     // パドル入力を無視（停止操作が音声にならないようにするため）
     ignore_paddle_input = true;
