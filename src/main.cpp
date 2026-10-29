@@ -2176,7 +2176,7 @@ void draw_startup_screen(void)
     drawstr_6px(0, 30, "Powered by", 1);
     drawstr_6px(40, 40, "UIAPduino", 1);
     ssd1306_drawFastHLine(0, 50, 128, 1);
-    drawstr_6px(0, 52, "Version 0.5", 1);
+    drawstr_6px(0, 52, "Version 0.6", 1);
     ssd1306_refresh();
 }
 
