@@ -245,6 +245,41 @@ volatile StopReason stop_reason = STOP_NONE;
 static bool repeat_mode = false;       // リピート再生中フラグ
 static uint8_t repeat_msg_idx = 0;     // リピート対象メッセージ番号
 
+// 受信練習（ランダム5文字グループを連続送信）
+#define PRACTICE_OFF 0
+#define PRACTICE_EN  1 // 欧文: A-Z, 0-9
+#define PRACTICE_JA  2 // 和文: ｱ-ﾝ, ｦ（濁点・半濁点なし）
+static uint8_t practice_mode = PRACTICE_OFF;
+static char practice_buf[7];           // 5文字 + 語間スペース + 終端
+static uint32_t rnd_state = 2463534242u;
+
+static uint32_t rnd_next(void)
+{
+    // xorshift32
+    rnd_state ^= rnd_state << 13;
+    rnd_state ^= rnd_state >> 17;
+    rnd_state ^= rnd_state << 5;
+    return rnd_state;
+}
+
+// 次の5文字グループを practice_buf に作る
+static void practice_next_group(void)
+{
+    for (uint8_t i = 0; i < 5; i++) {
+        char c;
+        if (practice_mode == PRACTICE_JA) {
+            uint8_t n = rnd_next() % 46;               // ｱ-ﾝ(45文字) + ｦ
+            c = (char)((n == 45) ? 0xA6 : (0xB1 + n));
+        } else {
+            uint8_t n = rnd_next() % 36;               // A-Z(26文字) + 0-9
+            c = (char)((n < 26) ? ('A' + n) : ('0' + n - 26));
+        }
+        practice_buf[i] = c;
+    }
+    practice_buf[5] = ' ';
+    practice_buf[6] = '\0';
+}
+
 // スイッチの判定
 uint8_t sw_mask = 0; // スイッチ押しっぱなしをカウントしないためのマスク
 uint8_t sw_clicked = 0;
@@ -342,6 +377,7 @@ void update_speed_from_adc(void);
 uint16_t read_battery_mv(void);
 void update_battery_status(void);
 void start_play(uint8_t msg);
+void start_practice(uint8_t kind);
 void stop_play(void);
 void adjust_edit_view(void);
 void update_switch_status(void);
@@ -811,6 +847,13 @@ uint8_t job_auto(void)
             case AUTO_IDLE: {
                 char c = auto_msg[pos];
 
+                // 受信練習：グループを送り終えたら次の5文字を作って続ける
+                if (c == '\0' && practice_mode) {
+                    practice_next_group();
+                    pos = 0;
+                    c = auto_msg[0];
+                }
+
                 // メッセージ終端
                 if (c == '\0') {
                     morse_len = 0;
@@ -853,8 +896,8 @@ uint8_t job_auto(void)
                     break;
                 }
 
-                // 通常文字
-                if (!sys_msg_active) {
+                // 通常文字（受信練習では答えが先に見えないよう送信後に表示）
+                if (!sys_msg_active && !practice_mode) {
                     printAscii(c); // 送信文字を表示
                 }
 
@@ -892,6 +935,9 @@ uint8_t job_auto(void)
                 elem >>= 1;
                 if (elem == 0) {
                     // 文字の最後の要素が終わった
+                    if (practice_mode) {
+                        printAscii(auto_msg[pos]); // 受信練習：鳴り終わってから表示
+                    }
                     char next = auto_msg[pos + 1];
 
                     if (next == '\0') {
@@ -919,7 +965,9 @@ uint8_t job_auto(void)
                         return 0;
                     } else if (next == ' ') {
                         // ※ここでスペースをつ表示する
-                        if (!sys_msg_active) {
+                        if (practice_mode) {
+                            lcdindex = colums; // 受信練習：1行に1グループ
+                        } else if (!sys_msg_active) {
                             printAscii(' ');
                         }
 
@@ -1660,6 +1708,20 @@ void handle_keyer_mode(void)
         save_settings_to_flash();
         draw_lang_mark(84, wabun_mode);
         ssd1306_refresh();
+        return;
+    }
+
+    /* SW1+SW3 → 欧文受信練習 / SW2+SW4 → 和文受信練習 */
+    if (sw_mode == SW_INFO_DOUBLE && (sw_stat & (SW_1 | SW_3)) == (SW_1 | SW_3))
+    {
+        SW_CLEAR();
+        start_practice(PRACTICE_EN);
+        return;
+    }
+    if (sw_mode == SW_INFO_DOUBLE && (sw_stat & (SW_2 | SW_4)) == (SW_2 | SW_4))
+    {
+        SW_CLEAR();
+        start_practice(PRACTICE_JA);
         return;
     }
 
@@ -2478,9 +2540,9 @@ void start_play(uint8_t msg)
     cur_msg = msg;
     last_activity_tick = tim1_tick256;
 
-    auto_msg = msgs[msg]; // ※追加：生成する文字列を指定
+    auto_msg = practice_mode ? practice_buf : msgs[msg]; // ※追加：生成する文字列を指定
     sys_msg_active = false;
-    keyout_enabled = true;
+    keyout_enabled = !practice_mode; // 受信練習中は無線機をキーイングしない
 
     // 再生開始時に未確定データをクリアして、前回の残りで誤デコードされないようにする
     morse_len = 0;    // 未確定のモールス符号を破棄
@@ -2494,10 +2556,32 @@ void start_play(uint8_t msg)
     mode = MODE_PLAY;
 }
 
+//==========================================
+//  受信練習開始（何か操作すると handle_play_mode で停止）
+//==========================================
+void start_practice(uint8_t kind)
+{
+    practice_mode = kind;
+    rnd_state ^= tim1_tick256;         // 押したタイミングで乱数を変える
+    if (rnd_state == 0) rnd_state = 1;
+    practice_next_group();
+
+    start_play(0);                     // 再生状態の初期化を共用（practice_buf を送信）
+
+    reset_decoded_display();
+    draw_keyer_screen();
+    ssd1306_fillRect(0, 0, 40, 8, 0);
+    drawstr_6px(0, 0, (kind == PRACTICE_JA) ? "RX \xB1\xB2\xB3" : "RX ABC", 1);
+    redraw_lines();
+    ssd1306_refresh();
+}
+
 void stop_play(void)
 {
     auto_mode = false;     // 自動送信OFF
     req_reset_auto = true; // job_auto の状態を初期化
+    practice_mode = PRACTICE_OFF;
+    keyout_enabled = true;
 
     // パドル入力を無視（停止操作が音声にならないようにするため）
     ignore_paddle_input = true;
