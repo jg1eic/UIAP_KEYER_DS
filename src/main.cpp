@@ -1484,6 +1484,9 @@ uint8_t morse_to_char(uint8_t code)
 {
     uint8_t i;
 
+    // 符号長オーバー（エラー符号 ........ など）は、表の未対応(0)に一致させない
+    if (code == 0) return '*';
+
     // 和文モードはカナを優先（4要素以下の符号は全てカナになる）
     if (wabun_mode) {
         for (i = 0; i < sizeof(wabun_tbl); i++) {
