@@ -37,7 +37,7 @@ FLASH_EEP eep;  // EEPROM emulation object
 #define PDL_DASH 2
 #define PDL_FREE 0
 
-#define SETUP_ITEMS 8 // 設定画面の項目数
+#define SETUP_ITEMS 7 // 設定画面の項目数
 
 #define WPM_MAX 40 // 最大速度
 #define WPM_MIN 5  // 最小速度
@@ -195,11 +195,6 @@ static uint8_t repeat_interval_idx = 0; // REPEAT INT: 0=1s,1=3s,2=5s,3=10s,4=30
 static uint8_t standby_time_idx = 0;    // STANDBY: 0=10s,1=30s,2=60s,3=なし
 static bool iambic_b = true;            // IAMBIC: true=B（従来動作）, false=A
 static uint8_t weight_idx = 1;          // WEIGHT: 長点の長さ 0=2.5,1=3.0(従来),2=3.5,3=4.0 dit
-static uint8_t farns_idx = 0;           // FARNSWORTH: 0=OFF,1=15,2=20,3=25WPM（受信練習のみ）
-static const uint8_t farns_wpm_tbl[4] = {0, 15, 20, 25};
-static int farns_key_spd = 0;           // ファーンズワース時の文字速度（1dit の tick 数）
-static uint8_t farns_cgap = 0;          // 字間の追加待ち（half-dit 数、0=ファーンズワース無効）
-static uint8_t farns_wgap = 0;          // 語間の追加待ち（half-dit 数）
 static uint16_t bat_mv = 0;          // 電池電圧 [mV]
 static bool bat_low_warn = false;    // 低電圧警告フラグ
 static bool bat_blink = false;       // LOW BAT 点滅状態
@@ -284,19 +279,6 @@ static void practice_next_group(void)
     }
     practice_buf[5] = ' ';
     practice_buf[6] = '\0';
-
-    // ファーンズワース：文字速度 C が VR 速度 S より速いときだけ字間・語間を広げる
-    //  ARRL の式 ta = (60C - 37.2S) / (S * C) [秒] を文字速度の half-dit に換算
-    //  通常の字間 6 / 語間 14 half-dit のうち、ELEM_OFF(2)+AUTO_IDLE(1) を除いた分
-    uint32_t c = farns_wpm_tbl[farns_idx];
-    uint32_t sp = (uint32_t)wpm;
-    farns_cgap = 0;
-    if (c > sp) {
-        uint32_t num = 3600u * c - 2232u * sp;
-        uint32_t den = 1368u * sp;
-        farns_cgap = (uint8_t)(6 * num / den - 3);
-        farns_wgap = (uint8_t)(14 * num / den - 3);
-    }
 }
 
 // スイッチの判定
@@ -689,7 +671,6 @@ void load_settings_from_flash(void)
         wabun_saved          = wabun_mode;
         iambic_b             = (buf[8] != 0);                 // 旧データ(0xFF)は従来の B
         weight_idx           = (buf[9] < 4) ? buf[9] : 1;     // 旧データは 3.0
-        farns_idx            = (buf[10] < 4) ? buf[10] : 0;   // 旧データは OFF
     } else {
         paddle_swap          = false;
         sidetone_enabled     = true;
@@ -714,7 +695,6 @@ void save_settings_to_flash(void)
     buf[7] = wabun_mode ? 1 : 0;
     buf[8] = iambic_b ? 1 : 0;
     buf[9] = weight_idx;
-    buf[10] = farns_idx;
     wabun_saved = wabun_mode;
     eep.erase(PAGE_SETTINGS);
     eep.write(PAGE_SETTINGS, buf);
@@ -825,8 +805,7 @@ uint8_t job_auto(void)
 
     // システムメッセージ中は固定速度
     // ※WPM 可変対応：毎回最新の key_spd を参照
-    // 受信練習のファーンズワース：文字は設定速度、字間・語間は VR 速度相当に広げる
-    int current_key_spd = sys_msg_active ? key_spd_sys : (farns_cgap ? farns_key_spd : key_spd);
+    int current_key_spd = sys_msg_active ? key_spd_sys : key_spd;
 
     // リセット要求
     if (req_reset_auto) {
@@ -939,7 +918,12 @@ uint8_t job_auto(void)
 
                 // 最初の要素を送信開始
                 state = AUTO_ELEM_ON;
-                half_rem = (code & elem) ? 6 : 2; // dit=1dit=2half, dah=3dit=6half
+                // dit=1dit=2half, dah=3dit=6half
+                // メモリ再生はパドルと揃えて WEIGHT を反映（受信練習・システムメッセージは標準の 3.0）
+                if (code & elem)
+                    half_rem = (practice_mode || sys_msg_active) ? 6 : 5 + weight_idx;
+                else
+                    half_rem = 2;
                 break;
             }
 
@@ -996,12 +980,12 @@ uint8_t job_auto(void)
                             pos++;
                         }
                         state = AUTO_WORD_GAP;
-                        half_rem = farns_cgap ? farns_wgap : 11; // ELEM_OFF(2) + WORD_GAP(11) + AUTO_IDLE(1) = 14 half-dit = 7dit
+                        half_rem = 11; // ELEM_OFF(2) + WORD_GAP(11) + AUTO_IDLE(1) = 14 half-dit = 7dit
                     } else {
                         // 次も文字→文字間ギャップ
                         pos++; // 次の文字へ
                         state = AUTO_CHAR_GAP;
-                        half_rem = farns_cgap ? farns_cgap : 3; // ELEM_OFF(2) + CHAR_GAP(3) + AUTO_IDLE(1) = 6 half-dit = 3dit
+                        half_rem = 3; // ELEM_OFF(2) + CHAR_GAP(3) + AUTO_IDLE(1) = 6 half-dit = 3dit
                     }
                 } else {
                     // まだ要素が残ってい →次の要素 ON
@@ -2070,19 +2054,18 @@ static void draw_lang_mark(uint8_t x, bool wabun)
 }
 
 //==========================================
-//  #6 設定画面描画（8項目・スクロール対応）
+//  #6 設定画面描画（7項目・スクロール対応）
 //==========================================
 void draw_setup_screen(void)
 {
     static const char* labels[SETUP_ITEMS] = {
         "PDL SWAP", "SIDETONE", "TONE FREQ", "REPEAT INT", "STANDBY",
-        "IAMBIC", "WEIGHT", "FARNSWORTH"
+        "IAMBIC", "WEIGHT"
     };
     static const char* tone_strs[3]   = {"976Hz", "651Hz", "488Hz"};
     static const char* rpt_strs[6]    = {" 1s", " 3s", " 5s", "10s", "30s", "60s"};
     static const char* stby_strs[4]   = {"10s", "30s", "60s", "---"};
     static const char* wt_strs[4]     = {"2.5", "3.0", "3.5", "4.0"};
-    static const char* farns_strs[4]  = {"OFF", "15WPM", "20WPM", "25WPM"};
 
     const char* values[SETUP_ITEMS];
     values[0] = paddle_swap      ? " ON" : "OFF";
@@ -2092,7 +2075,6 @@ void draw_setup_screen(void)
     values[4] = stby_strs[standby_time_idx];
     values[5] = iambic_b ? "  B" : "  A";
     values[6] = wt_strs[weight_idx];
-    values[7] = farns_strs[farns_idx];
 
     ssd1306_setbuf(0);
     drawstr_6px(0, 0, "SETUP", 1);
@@ -2130,7 +2112,7 @@ void draw_setup_screen(void)
 }
 
 //==========================================
-//  #6 設定モード処理（8項目・スクロール対応）
+//  #6 設定モード処理（7項目・スクロール対応）
 //  F1:カーソル上  F2:カーソル下  F3:値切替  F4:保存して終了
 //==========================================
 void handle_setup_mode(void)
@@ -2176,7 +2158,6 @@ void handle_setup_mode(void)
         case 4: standby_time_idx    = (standby_time_idx    + 1) % 4;            break;
         case 5: iambic_b            = !iambic_b;                                 break;
         case 6: weight_idx          = (weight_idx + 1) % 4;                      break;
-        case 7: farns_idx           = (farns_idx  + 1) % 4;                      break;
         }
         draw_setup_screen();
         return;
@@ -2593,7 +2574,6 @@ void start_play(uint8_t msg)
 void start_practice(uint8_t kind)
 {
     practice_mode = kind;
-    if (farns_idx) farns_key_spd = 4687 / farns_wpm_tbl[farns_idx]; // 1dit の tick 数
     rnd_state ^= tim1_tick256;         // 押したタイミングで乱数を変える
     if (rnd_state == 0) rnd_state = 1;
     practice_next_group();
@@ -2613,7 +2593,6 @@ void stop_play(void)
     auto_mode = false;     // 自動送信OFF
     req_reset_auto = true; // job_auto の状態を初期化
     practice_mode = PRACTICE_OFF;
-    farns_cgap = 0;
     keyout_enabled = true;
 
     // パドル入力を無視（停止操作が音声にならないようにするため）
